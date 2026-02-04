@@ -87,105 +87,127 @@ const exportExperimentToCsv = async (experiment) => {
   document.body.removeChild(link);
 };
 
-// --- HELPER: ESPORTAZIONE PDF (STAMPA) ---
-const exportExperimentToPdf = async (experiment) => {
-  // Apriamo subito la finestra per evitare blocchi popup
-  const printWindow = window.open('', '_blank');
-  if (!printWindow) {
-    alert("Per favore abilita i popup per generare il PDF.");
-    return;
-  }
-  
-  printWindow.document.write('<html><body style="font-family:sans-serif; text-align:center; padding-top:50px;">Generazione Report in corso...</body></html>');
+// --- NUOVO COMPONENTE: REPORT DI STAMPA PDF ---
+const ExperimentReport = ({ experiment, onClose }) => {
+  const [sessions, setSessions] = useState(null);
 
-  const { data: sessions, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('experiment_id', experiment.id)
-    .order('created_at', { ascending: true }); // Ordine cronologico per il report
+  useEffect(() => {
+    const fetchSessions = async () => {
+      const { data } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('experiment_id', experiment.id)
+        .order('created_at', { ascending: true });
+      setSessions(data || []);
+      // Avvia stampa automatica dopo breve attesa per rendering
+      setTimeout(() => window.print(), 800);
+    };
+    fetchSessions();
+  }, [experiment]);
 
-  if (error) { 
-    printWindow.close();
-    alert("Errore recupero dati: " + error.message); 
-    return; 
-  }
+  if (!sessions) return (
+    <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center">
+      <Loader2 className="w-10 h-10 animate-spin text-emerald-600 mb-4"/>
+      <p className="text-slate-500 font-medium">Preparazione documento...</p>
+    </div>
+  );
 
-  // Costruiamo l'HTML del report
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>Report: ${experiment.name}</title>
-        <style>
-          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; }
-          .header { border-bottom: 2px solid #059669; padding-bottom: 20px; margin-bottom: 30px; }
-          .header h1 { color: #059669; margin: 0; font-size: 24px; }
-          .meta { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 30px; display: flex; flex-wrap: wrap; gap: 20px; }
-          .meta div { flex: 1; min-width: 200px; }
-          .label { font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: bold; display: block; margin-bottom: 4px; }
-          .value { font-size: 14px; font-weight: 500; }
-          table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          th { background: #059669; color: white; text-align: left; padding: 10px; font-weight: 600; }
-          td { border-bottom: 1px solid #e5e7eb; padding: 8px 10px; vertical-align: top; }
-          tr:nth-child(even) { background: #f3f4f6; }
-          .footer { margin-top: 50px; font-size: 10px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 10px; }
-          @media print {
-            body { padding: 0; }
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>EEG Lab Report</h1>
+  return (
+    <div className="fixed inset-0 bg-white z-[100] overflow-auto text-black">
+      {/* BARRA COMANDI (NON VIENE STAMPATA) */}
+      <div className="fixed top-0 left-0 right-0 bg-slate-800 text-white p-4 flex justify-between items-center print:hidden shadow-lg">
+        <h2 className="font-bold text-lg">Anteprima di Stampa</h2>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded font-bold">Chiudi</button>
+          <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center gap-2">
+            <Printer className="w-4 h-4" /> Stampa / Salva PDF
+          </button>
         </div>
+      </div>
 
-        <div class="meta">
-          <div><span class="label">Esperimento</span><span class="value">${experiment.name}</span></div>
-          <div><span class="label">Sperimentatore</span><span class="value">${experiment.experimenter}</span></div>
-          <div><span class="label">Data Inizio</span><span class="value">${new Date(experiment.date).toLocaleDateString()}</span></div>
-          <div style="flex: 100%;"><span class="label">Note</span><span class="value">${experiment.notes || '-'}</span></div>
-        </div>
-
-        <h3>Elenco Sessioni (${sessions?.length || 0})</h3>
+      {/* CONTENUTO REPORT (FORMATTATO A4) */}
+      <div className="max-w-[210mm] mx-auto bg-white mt-20 mb-20 p-8 print:m-0 print:p-0 print:w-full">
         
-        <table>
-          <thead>
-            <tr>
-              <th width="15%">Soggetto</th>
-              <th width="15%">Data</th>
-              <th width="25%">File EEG</th>
-              <th width="15%">Canali Bad</th>
-              <th width="30%">Note</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(sessions || []).map(s => `
-              <tr>
-                <td><strong>${s.subject_id}</strong></td>
-                <td>${new Date(s.date).toLocaleDateString()} ${new Date(s.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-                <td style="font-family:monospace">${s.eeg_filename || '-'}</td>
-                <td>${s.bad_channels || '-'}</td>
-                <td>${s.notes || '-'}</td>
+        {/* Header Report */}
+        <header className="border-b-2 border-emerald-600 pb-6 mb-8 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-bold text-emerald-800 mb-1">EEG Lab Report</h1>
+            <p className="text-slate-500 text-sm">Generato il {new Date().toLocaleDateString()} alle {new Date().toLocaleTimeString()}</p>
+          </div>
+          <div className="text-right">
+            <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded text-xs font-bold uppercase tracking-wide">
+              {experiment.id.slice(0,8)}
+            </div>
+          </div>
+        </header>
+
+        {/* Dati Esperimento */}
+        <section className="mb-10 bg-slate-50 p-6 rounded-xl border border-slate-200 print:bg-transparent print:border-none print:p-0">
+          <h2 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Dettagli Esperimento</h2>
+          <div className="grid grid-cols-2 gap-y-6 gap-x-12 text-sm">
+            <div>
+              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome Esperimento</span>
+              <span className="font-medium text-lg text-slate-900 block">{experiment.name}</span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Sperimentatore</span>
+              <span className="font-medium text-lg text-slate-900 block">{experiment.experimenter}</span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Data Inizio</span>
+              <span className="font-medium text-slate-700 block">{new Date(experiment.date).toLocaleDateString()} {new Date(experiment.date).toLocaleTimeString()}</span>
+            </div>
+            <div>
+              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Totale Sessioni</span>
+              <span className="font-medium text-slate-700 block">{sessions.length} registrate</span>
+            </div>
+            {experiment.notes && (
+              <div className="col-span-2">
+                <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Note Generali</span>
+                <p className="italic text-slate-600 bg-white p-3 rounded border border-slate-200 print:border-none print:p-0">{experiment.notes}</p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Tabella Sessioni */}
+        <section>
+          <h2 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Elenco Sessioni</h2>
+          <table className="w-full text-sm text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-100 text-slate-700 border-b-2 border-slate-200 print:bg-transparent">
+                <th className="p-3 font-bold uppercase text-xs w-1/6">Soggetto</th>
+                <th className="p-3 font-bold uppercase text-xs w-1/6">Data</th>
+                <th className="p-3 font-bold uppercase text-xs w-1/4">File EEG</th>
+                <th className="p-3 font-bold uppercase text-xs w-1/6">Canali Bad</th>
+                <th className="p-3 font-bold uppercase text-xs w-1/4">Note</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sessions.map((sess, idx) => (
+                <tr key={sess.id} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50 print:bg-transparent'}`}>
+                  <td className="p-3 font-bold text-emerald-700">{sess.subject_id}</td>
+                  <td className="p-3 text-slate-600">{new Date(sess.date).toLocaleDateString()}</td>
+                  <td className="p-3 font-mono text-xs text-slate-600">{sess.eeg_filename || '-'}</td>
+                  <td className="p-3 text-xs text-orange-600 font-medium">{sess.bad_channels || '-'}</td>
+                  <td className="p-3 text-xs italic text-slate-500">{sess.notes || '-'}</td>
+                </tr>
+              ))}
+              {sessions.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="p-8 text-center text-slate-400 italic">Nessuna sessione registrata.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </section>
 
-        <div class="footer">
-          Documento generato automaticamente il ${new Date().toLocaleString()} - EEG Lab Manager
-        </div>
-
-        <script>
-          window.onload = () => { setTimeout(() => window.print(), 500); }
-        </script>
-      </body>
-    </html>
-  `;
-
-  printWindow.document.open();
-  printWindow.document.write(htmlContent);
-  printWindow.document.close();
+        <footer className="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
+          <p>Documento riservato ad uso interno - Laboratorio di Neuroscienze</p>
+        </footer>
+      </div>
+    </div>
+  );
 };
 
 // --- COMPONENTI ---
@@ -270,7 +292,7 @@ const AuthScreen = () => {
 };
 
 // 2. DASHBOARD
-const Dashboard = ({ session, profile, onSelectExperiment }) => {
+const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
   const [experiments, setExperiments] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -326,7 +348,7 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
 
   const handlePrint = (e, experiment) => {
     e.stopPropagation();
-    exportExperimentToPdf(experiment);
+    onPrint(experiment);
   };
 
   return (
@@ -496,7 +518,7 @@ const InviteGenerator = ({ onClose, session }) => {
 };
 
 // 4. DETTAGLIO ESPERIMENTO
-const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onBack }) => {
+const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onBack, onPrint }) => {
   const [experiment, setExperiment] = useState(initialExperiment);
   const [sessions, setSessions] = useState([]);
   const [isEditingExp, setIsEditingExp] = useState(false);
@@ -586,7 +608,7 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
         </div>
         
         <div className="flex gap-1">
-          <button onClick={() => exportExperimentToPdf(experiment)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50" title="Report PDF"><Printer className="w-5 h-5" /></button>
+          <button onClick={() => onPrint(experiment)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50" title="Report PDF"><Printer className="w-5 h-5" /></button>
           <button onClick={() => exportExperimentToCsv(experiment)} className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50" title="Export CSV"><Download className="w-5 h-5" /></button>
 
           {canEdit && (
@@ -680,6 +702,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [selectedExperiment, setSelectedExperiment] = useState(null);
+  const [printingExperiment, setPrintingExperiment] = useState(null); // NUOVO STATO STAMPA
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -702,6 +725,29 @@ export default function App() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-400">Caricamento...</div>;
   if (!session) return <AuthScreen />;
-  if (selectedExperiment) return <ExperimentDetail experiment={selectedExperiment} session={session} profile={profile} onBack={() => setSelectedExperiment(null)} />;
-  return <Dashboard session={session} profile={profile} onSelectExperiment={setSelectedExperiment} />;
+
+  // LOGICA DI NAVIGAZIONE:
+  // 1. Se stiamo stampando, mostra SOLO il report (copre tutto il resto)
+  if (printingExperiment) {
+    return <ExperimentReport experiment={printingExperiment} onClose={() => setPrintingExperiment(null)} />;
+  }
+
+  // 2. Se abbiamo selezionato un esperimento, mostra i dettagli
+  if (selectedExperiment) {
+    return <ExperimentDetail 
+      experiment={selectedExperiment} 
+      session={session} 
+      profile={profile} 
+      onBack={() => setSelectedExperiment(null)} 
+      onPrint={setPrintingExperiment} // Passiamo la funzione per stampare
+    />;
+  }
+
+  // 3. Altrimenti mostra la dashboard
+  return <Dashboard 
+    session={session} 
+    profile={profile} 
+    onSelectExperiment={setSelectedExperiment} 
+    onPrint={setPrintingExperiment} // Passiamo la funzione per stampare
+  />;
 }
