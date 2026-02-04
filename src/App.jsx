@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA LA RIGA QUI SOTTO E INSTALLA LA LIBRERIA
-// import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 import { 
   Printer, // Spostato qui in alto per sicurezza
@@ -46,7 +46,7 @@ const PrinterIcon = (props) => (
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
-/*
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -55,12 +55,12 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-*/
+
 
 // --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
 // Questo serve solo per non far crashare l'anteprima in questa chat.
 // Quando usi il codice reale sopra, puoi cancellare o commentare questo blocco.
-const supabase = {
+/* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -75,7 +75,7 @@ const supabase = {
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
-};
+}; */
 // -----------------------------------------------------------
 
 // --- HELPER: ESPORTAZIONE CSV (EXCEL) ---
