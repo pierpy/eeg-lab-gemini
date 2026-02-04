@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA LA RIGA QUI SOTTO E INSTALLA LA LIBRERIA
-import { createClient } from '@supabase/supabase-js';
+// import { createClient } from '@supabase/supabase-js';
 
 import { 
+  Printer, // Spostato qui in alto per sicurezza
   Camera, 
   FileText, 
   Users, 
@@ -45,7 +46,7 @@ const PrinterIcon = (props) => (
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
-
+/*
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -54,12 +55,12 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
+*/
 
 // --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
 // Questo serve solo per non far crashare l'anteprima in questa chat.
 // Quando usi il codice reale sopra, puoi cancellare o commentare questo blocco.
-/* const supabase = {
+const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -74,7 +75,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
-}; */
+};
 // -----------------------------------------------------------
 
 // --- HELPER: ESPORTAZIONE CSV (EXCEL) ---
@@ -414,24 +415,27 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                 onClick={() => onSelectExperiment(exp)}
                 className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 active:scale-[0.99] transition-transform cursor-pointer"
               >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold text-slate-800">{exp.name}</h3>
+                {/* FIX LAYOUT MOBILE: Aggiunto gap-2 e classi responsive */}
+                <div className="flex justify-between items-center gap-2">
+                  {/* FIX TEXT: Aggiunto min-w-0 e flex-1 per forzare il troncamento */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-slate-800 truncate">{exp.name}</h3>
                     {profile?.role === 'ADMIN' && exp.profiles?.email && (
                       <div className="flex items-center gap-1 mt-1 mb-2">
                         <span className="text-[10px] uppercase font-bold text-slate-400">Creato da:</span>
-                        <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-100 flex items-center gap-1">
-                           <User className="w-3 h-3" /> {exp.profiles.email}
+                        <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-100 flex items-center gap-1 truncate max-w-full">
+                           <User className="w-3 h-3 shrink-0" /> <span className="truncate">{exp.profiles.email}</span>
                         </span>
                       </div>
                     )}
                     <div className="flex items-center gap-3 text-sm text-slate-500 mt-1">
-                      <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {exp.experimenter}</span>
-                      <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(exp.date).toLocaleDateString()}</span>
+                      <span className="flex items-center gap-1 truncate"><Users className="w-3 h-3 shrink-0" /> {exp.experimenter}</span>
+                      <span className="flex items-center gap-1 shrink-0"><Calendar className="w-3 h-3" /> {new Date(exp.date).toLocaleDateString()}</span>
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-1">
+                  {/* FIX BUTTONS: Aggiunto shrink-0 per evitare che le icone si schiaccino */}
+                  <div className="flex items-center gap-1 shrink-0">
                     {/* Tasti Export */}
                     <button 
                       onClick={(e) => handlePrint(e, exp)}
