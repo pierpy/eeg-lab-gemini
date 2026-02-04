@@ -319,6 +319,16 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
     else fetchExperiments();
   };
 
+  const handleDownload = (e, experiment) => {
+    e.stopPropagation(); 
+    exportExperimentToCsv(experiment);
+  };
+
+  const handlePrint = (e, experiment) => {
+    e.stopPropagation();
+    exportExperimentToPdf(experiment);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       <header className="bg-white shadow-sm sticky top-0 z-10">
@@ -381,14 +391,14 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
                   <div className="flex items-center gap-1">
                     {/* Tasti Export */}
                     <button 
-                      onClick={(e) => { e.stopPropagation(); exportExperimentToPdf(exp); }}
+                      onClick={(e) => handlePrint(e, exp)}
                       className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10"
                       title="PDF Report"
                     >
                       <Printer className="w-4 h-4" />
                     </button>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); exportExperimentToCsv(exp); }}
+                      onClick={(e) => handleDownload(e, exp)}
                       className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors z-10"
                       title="Excel CSV"
                     >
@@ -418,6 +428,7 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
         <Plus className="w-6 h-6" />
       </button>
 
+      {/* MODAL NUOVO ESPERIMENTO */}
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
