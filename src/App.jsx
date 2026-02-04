@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
-// ⚠️ ISTRUZIONI PER L'USO LOCALE:
-// 1. Installa: npm install @supabase/supabase-js
-// 2. Decommenta la riga sotto:
+// ⚠️ PER VERCEL/LOCALE: DECOMMENTA LA RIGA QUI SOTTO E INSTALLA LA LIBRERIA
 import { createClient } from '@supabase/supabase-js';
 
 import { 
@@ -21,36 +19,42 @@ import {
   Key,
   Check,
   User,
-  Pencil // Nuova icona per modifica
+  Pencil
 } from 'lucide-react';
 
 // --- CONFIGURAZIONE SUPABASE ---
-// Decommenta nel tuo progetto locale:
+// ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Mancano le variabili d'ambiente di Supabase (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)");
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 
-// --- MOCK CLIENT (DA CANCELLARE IN LOCALE) ---
-// Serve solo per l'anteprima qui, cancellalo quando copi il codice.
+// --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
+// Questo serve solo per non far crashare l'anteprima in questa chat.
+// Quando usi il codice reale sopra, puoi cancellare o commentare questo blocco.
 /* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    signInWithPassword: async () => ({ error: { message: "Usa codice reale in locale!" } }),
-    signUp: async () => ({ error: { message: "Usa codice reale in locale!" } }),
+    signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx per il login." } }),
+    signUp: async () => ({ error: { message: "Funzione disponibile solo con Supabase reale attivato." } }),
     signOut: async () => {},
   },
   from: () => ({
     select: () => ({ order: () => Promise.resolve({ data: [], error: null }), eq: () => ({ single: () => Promise.resolve({ data: null }) }) }),
     insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
-    update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }), // Mock update
+    update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }),
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
 }; */
-// --------------------------------------------------
+// -----------------------------------------------------------
 
 // --- COMPONENTI ---
 
@@ -98,6 +102,10 @@ const AuthScreen = () => {
         </div>
         <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">EEG Lab Manager</h1>
         <p className="text-center text-slate-500 mb-8">Accesso Laboratorio</p>
+
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs p-3 rounded mb-4">
+          <strong>Setup:</strong> Ricordati di decommentare le righe di Supabase nel codice per collegare il database reale!
+        </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div>
@@ -240,6 +248,7 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
         <Plus className="w-6 h-6" />
       </button>
 
+      {/* MODAL NUOVO ESPERIMENTO */}
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
@@ -306,17 +315,14 @@ const InviteGenerator = ({ onClose, session }) => {
   );
 };
 
-// 4. DETTAGLIO ESPERIMENTO (Con Modifica e Cancellazione)
+// 4. DETTAGLIO ESPERIMENTO (Con Eliminazione)
 const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onBack }) => {
-  const [experiment, setExperiment] = useState(initialExperiment); // Stato locale per aggiornamenti UI
+  const [experiment, setExperiment] = useState(initialExperiment);
   const [sessions, setSessions] = useState([]);
-  
-  // Stati per Modali
   const [isEditingExp, setIsEditingExp] = useState(false);
-  const [sessionToEdit, setSessionToEdit] = useState(null); // Se null = creazione, se object = modifica
+  const [sessionToEdit, setSessionToEdit] = useState(null); 
   const [uploading, setUploading] = useState(false);
 
-  // Permessi
   const canEdit = profile?.role === 'ADMIN' || experiment.created_by === session.user.id;
 
   const fetchSessions = async () => {
@@ -325,7 +331,15 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
   };
   useEffect(() => { fetchSessions(); }, [experiment]);
 
-  // --- LOGICA MODIFICA ESPERIMENTO ---
+  // ELIMINA ESPERIMENTO
+  const handleDeleteExperiment = async () => {
+    if (!window.confirm("⚠️ SEI SICURO? Eliminando l'esperimento verranno cancellate anche tutte le sue sessioni.")) return;
+    
+    const { error } = await supabase.from('experiments').delete().eq('id', experiment.id);
+    if (error) alert(error.message);
+    else onBack();
+  };
+
   const handleUpdateExperiment = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -339,23 +353,21 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
     const { error } = await supabase.from('experiments').update(updates).eq('id', experiment.id);
     
     if (!error) {
-      setExperiment({ ...experiment, ...updates }); // Aggiorna UI locale
+      setExperiment({ ...experiment, ...updates });
       setIsEditingExp(false);
     } else {
       alert("Errore aggiornamento: " + error.message);
     }
   };
 
-  // --- LOGICA SALVATAGGIO SESSIONE (CREA O MODIFICA) ---
   const handleSaveSession = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
     const photoFile = formData.get('photo');
-    let photoUrl = sessionToEdit?.setup_photo_url || null; // Mantieni vecchia foto se non ne carichi una nuova
+    let photoUrl = sessionToEdit?.setup_photo_url || null;
 
     setUploading(true);
     
-    // Upload Foto
     if (photoFile && photoFile.size > 0) {
       const fileName = `${Math.random()}.${photoFile.name.split('.').pop()}`;
       const { data, error } = await supabase.storage.from('photos').upload(fileName, photoFile);
@@ -374,18 +386,16 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
 
     let error;
     if (sessionToEdit?.id) {
-      // MODIFICA
       const res = await supabase.from('sessions').update(sessionData).eq('id', sessionToEdit.id);
       error = res.error;
     } else {
-      // CREAZIONE
       const res = await supabase.from('sessions').insert(sessionData);
       error = res.error;
     }
 
     setUploading(false);
     if (!error) { 
-      setSessionToEdit(null); // Chiude modale (null resetta lo stato)
+      setSessionToEdit(null); 
       fetchSessions(); 
     } else {
       alert("Errore: " + error.message);
@@ -401,7 +411,6 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-      {/* HEADER DETTAGLIO */}
       <div className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-4">
         <button onClick={onBack} className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-full">
           <ArrowLeft className="w-6 h-6" />
@@ -411,19 +420,19 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
           <p className="text-xs text-slate-500 truncate">ID: {experiment.id.slice(0,8)}...</p>
         </div>
         
-        {/* Tasto Modifica Esperimento */}
         {canEdit && (
-          <button 
-            onClick={() => setIsEditingExp(true)} 
-            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors"
-          >
-            <Pencil className="w-5 h-5" />
-          </button>
+          <div className="flex gap-1">
+            <button onClick={() => setIsEditingExp(true)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">
+              <Pencil className="w-5 h-5" />
+            </button>
+            <button onClick={handleDeleteExperiment} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors">
+              <Trash2 className="w-5 h-5" />
+            </button>
+          </div>
         )}
       </div>
 
       <main className="max-w-3xl mx-auto p-4 space-y-6">
-        {/* CARD INFO ESPERIMENTO */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
            <div className="grid grid-cols-2 gap-4">
              <div>
@@ -482,15 +491,11 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
       </main>
 
       {canEdit && (
-        <button 
-          onClick={() => setSessionToEdit({})} // Passiamo oggetto vuoto per "Nuova Sessione"
-          className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 flex gap-2 pr-6 transition-transform active:scale-95"
-        >
+        <button onClick={() => setSessionToEdit({})} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 flex gap-2 pr-6 transition-transform active:scale-95">
           <Plus className="w-6 h-6" /> <span className="font-bold">Sessione</span>
         </button>
       )}
 
-      {/* MODAL MODIFICA ESPERIMENTO */}
       {isEditingExp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
@@ -498,7 +503,6 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
             <form onSubmit={handleUpdateExperiment} className="space-y-4">
               <input name="name" defaultValue={experiment.name} placeholder="Nome Esperimento" required className="w-full p-3 bg-slate-50 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500" />
               <input name="experimenter" defaultValue={experiment.experimenter} placeholder="Sperimentatore" required className="w-full p-3 bg-slate-50 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500" />
-              {/* Formattazione data per input datetime-local */}
               <input name="date" type="datetime-local" defaultValue={new Date(experiment.date).toISOString().slice(0, 16)} required className="w-full p-3 bg-slate-50 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500" />
               <textarea name="notes" defaultValue={experiment.notes} placeholder="Note..." className="w-full p-3 bg-slate-50 rounded-lg outline-none h-24 focus:ring-2 focus:ring-emerald-500" />
               <div className="flex gap-3 mt-6">
@@ -510,33 +514,22 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
         </div>
       )}
 
-      {/* MODAL SESSIONE (CREA / MODIFICA) */}
       {sessionToEdit && (
         <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center sm:p-4 z-50 animate-in fade-in">
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-bold mb-4">
-              {sessionToEdit.id ? 'Modifica Sessione' : 'Nuova Sessione'}
-            </h3>
+            <h3 className="text-lg font-bold mb-4">{sessionToEdit.id ? 'Modifica Sessione' : 'Nuova Sessione'}</h3>
             <form onSubmit={handleSaveSession} className="space-y-4">
                <div className="grid grid-cols-2 gap-4">
                  <input name="subjectId" defaultValue={sessionToEdit.subject_id} placeholder="ID Soggetto" required className="p-3 bg-slate-50 rounded-lg outline-none" />
-                 <input 
-                   name="date" 
-                   type="datetime-local" 
-                   defaultValue={sessionToEdit.date ? new Date(sessionToEdit.date).toISOString().slice(0, 16) : ''} 
-                   required className="p-3 bg-slate-50 rounded-lg outline-none" 
-                 />
+                 <input name="date" type="datetime-local" defaultValue={sessionToEdit.date ? new Date(sessionToEdit.date).toISOString().slice(0, 16) : ''} required className="p-3 bg-slate-50 rounded-lg outline-none" />
                </div>
                <input name="eegFile" defaultValue={sessionToEdit.eeg_filename} placeholder="Nome file EEG" className="w-full p-3 bg-slate-50 rounded-lg outline-none font-mono" />
                <input name="badChannels" defaultValue={sessionToEdit.bad_channels} placeholder="Bad Channels" className="w-full p-3 bg-slate-50 rounded-lg outline-none" />
-               
                <div>
                   <label className="block text-xs font-bold text-slate-500 mb-1">Foto Setup {sessionToEdit.setup_photo_url && '(Lascia vuoto per mantenere attuale)'}</label>
                   <input type="file" name="photo" accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"/>
                </div>
-
                <textarea name="notes" defaultValue={sessionToEdit.notes} placeholder="Note..." className="w-full p-3 bg-slate-50 rounded-lg outline-none h-20" />
-               
                <div className="flex gap-3 mt-4">
                  <button type="button" onClick={() => setSessionToEdit(null)} className="flex-1 py-3 text-slate-600 font-medium">Annulla</button>
                  <button type="submit" disabled={uploading} className="flex-1 py-3 bg-emerald-600 text-white rounded-lg flex justify-center gap-2">
@@ -592,7 +585,7 @@ export default function App() {
       <ExperimentDetail 
         experiment={selectedExperiment} 
         session={session}
-        profile={profile} // Passiamo il profilo per controllare i permessi
+        profile={profile}
         onBack={() => setSelectedExperiment(null)}
       />
     );
