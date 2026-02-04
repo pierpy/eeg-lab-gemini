@@ -19,8 +19,29 @@ import {
   Key,
   Check,
   User,
-  Pencil
+  Pencil,
+  Download
 } from 'lucide-react';
+
+// --- ICONA PRINTER MANUALE (PER RISOLVERE PROBLEMI DI IMPORT) ---
+const PrinterIcon = (props) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M6 9V2h12v7" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <path d="M6 14h12v8H6z" />
+  </svg>
+);
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
@@ -120,7 +141,7 @@ const ExperimentReport = ({ experiment, onClose }) => {
         <div className="flex gap-3">
           <button onClick={onClose} className="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded font-bold">Chiudi</button>
           <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center gap-2">
-            <Printer className="w-4 h-4" /> Stampa / Salva PDF
+            <PrinterIcon className="w-4 h-4" /> Stampa / Salva PDF
           </button>
         </div>
       </div>
@@ -417,7 +438,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                       className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10"
                       title="PDF Report"
                     >
-                      <Printer className="w-4 h-4" />
+                      <PrinterIcon className="w-4 h-4" />
                     </button>
                     <button 
                       onClick={(e) => handleDownload(e, exp)}
@@ -608,7 +629,7 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
         </div>
         
         <div className="flex gap-1">
-          <button onClick={() => onPrint(experiment)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50" title="Report PDF"><Printer className="w-5 h-5" /></button>
+          <button onClick={() => onPrint(experiment)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50" title="Report PDF"><PrinterIcon className="w-5 h-5" /></button>
           <button onClick={() => exportExperimentToCsv(experiment)} className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50" title="Export CSV"><Download className="w-5 h-5" /></button>
 
           {canEdit && (
