@@ -178,6 +178,15 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
     }
   };
 
+  const handleDeleteExperiment = async (e, id) => {
+    e.stopPropagation(); // Evita di aprire il dettaglio quando si clicca il cestino
+    if (!window.confirm("⚠️ SEI SICURO? Eliminando l'esperimento verranno cancellate anche tutte le sue sessioni.")) return;
+    
+    const { error } = await supabase.from('experiments').delete().eq('id', id);
+    if (error) alert("Errore eliminazione: " + error.message);
+    else fetchExperiments(); // Ricarica la lista
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
       <header className="bg-white shadow-sm sticky top-0 z-10">
@@ -236,7 +245,20 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
                       <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {new Date(exp.date).toLocaleDateString()}</span>
                     </div>
                   </div>
-                  <ChevronRight className="text-slate-300 w-5 h-5" />
+                  
+                  <div className="flex items-center gap-2">
+                    {/* Tasto Eliminazione rapida in lista */}
+                    {(profile?.role === 'ADMIN' || exp.created_by === session.user.id) && (
+                      <button 
+                        onClick={(e) => handleDeleteExperiment(e, exp.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors z-10"
+                        title="Elimina"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    <ChevronRight className="text-slate-300 w-5 h-5" />
+                  </div>
                 </div>
               </div>
             ))}
@@ -331,7 +353,7 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
   };
   useEffect(() => { fetchSessions(); }, [experiment]);
 
-  // ELIMINA ESPERIMENTO
+  // ELIMINA ESPERIMENTO (Dettaglio)
   const handleDeleteExperiment = async () => {
     if (!window.confirm("⚠️ SEI SICURO? Eliminando l'esperimento verranno cancellate anche tutte le sue sessioni.")) return;
     
