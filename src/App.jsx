@@ -56,6 +56,138 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 }; */
 // -----------------------------------------------------------
 
+// --- HELPER: ESPORTAZIONE CSV (EXCEL) ---
+const exportExperimentToCsv = async (experiment) => {
+  if (!window.confirm(`Vuoi scaricare i dati di "${experiment.name}" in formato Excel/CSV?`)) return;
+
+  const { data: sessions, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('experiment_id', experiment.id);
+
+  if (error) { alert("Errore download: " + error.message); return; }
+  if (!sessions || sessions.length === 0) { alert("Nessun dato da esportare."); return; }
+
+  const headers = ["ID Esperimento", "Nome Esperimento", "Sperimentatore", "Data Inizio", "Note Exp", "ID Sessione", "Soggetto", "Data Sessione", "File EEG", "Canali Bad", "Note Sessione"];
+  const escapeCsv = (text) => `"${(text || '').toString().replace(/"/g, '""')}"`;
+
+  const rows = sessions.map(s => [
+    experiment.id, escapeCsv(experiment.name), escapeCsv(experiment.experimenter), new Date(experiment.date).toLocaleDateString(), escapeCsv(experiment.notes),
+    s.id, escapeCsv(s.subject_id), new Date(s.date).toLocaleString(), escapeCsv(s.eeg_filename), escapeCsv(s.bad_channels), escapeCsv(s.notes)
+  ]);
+
+  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${experiment.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// --- HELPER: ESPORTAZIONE PDF (STAMPA) ---
+const exportExperimentToPdf = async (experiment) => {
+  // Apriamo subito la finestra per evitare blocchi popup
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    alert("Per favore abilita i popup per generare il PDF.");
+    return;
+  }
+  
+  printWindow.document.write('<html><body style="font-family:sans-serif; text-align:center; padding-top:50px;">Generazione Report in corso...</body></html>');
+
+  const { data: sessions, error } = await supabase
+    .from('sessions')
+    .select('*')
+    .eq('experiment_id', experiment.id)
+    .order('created_at', { ascending: true }); // Ordine cronologico per il report
+
+  if (error) { 
+    printWindow.close();
+    alert("Errore recupero dati: " + error.message); 
+    return; 
+  }
+
+  // Costruiamo l'HTML del report
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Report: ${experiment.name}</title>
+        <style>
+          body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #333; }
+          .header { border-bottom: 2px solid #059669; padding-bottom: 20px; margin-bottom: 30px; }
+          .header h1 { color: #059669; margin: 0; font-size: 24px; }
+          .meta { background: #f9fafb; padding: 15px; border-radius: 8px; margin-bottom: 30px; display: flex; flex-wrap: wrap; gap: 20px; }
+          .meta div { flex: 1; min-width: 200px; }
+          .label { font-size: 11px; text-transform: uppercase; color: #6b7280; font-weight: bold; display: block; margin-bottom: 4px; }
+          .value { font-size: 14px; font-weight: 500; }
+          table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          th { background: #059669; color: white; text-align: left; padding: 10px; font-weight: 600; }
+          td { border-bottom: 1px solid #e5e7eb; padding: 8px 10px; vertical-align: top; }
+          tr:nth-child(even) { background: #f3f4f6; }
+          .footer { margin-top: 50px; font-size: 10px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; padding-top: 10px; }
+          @media print {
+            body { padding: 0; }
+            button { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>EEG Lab Report</h1>
+        </div>
+
+        <div class="meta">
+          <div><span class="label">Esperimento</span><span class="value">${experiment.name}</span></div>
+          <div><span class="label">Sperimentatore</span><span class="value">${experiment.experimenter}</span></div>
+          <div><span class="label">Data Inizio</span><span class="value">${new Date(experiment.date).toLocaleDateString()}</span></div>
+          <div style="flex: 100%;"><span class="label">Note</span><span class="value">${experiment.notes || '-'}</span></div>
+        </div>
+
+        <h3>Elenco Sessioni (${sessions?.length || 0})</h3>
+        
+        <table>
+          <thead>
+            <tr>
+              <th width="15%">Soggetto</th>
+              <th width="15%">Data</th>
+              <th width="25%">File EEG</th>
+              <th width="15%">Canali Bad</th>
+              <th width="30%">Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${(sessions || []).map(s => `
+              <tr>
+                <td><strong>${s.subject_id}</strong></td>
+                <td>${new Date(s.date).toLocaleDateString()} ${new Date(s.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                <td style="font-family:monospace">${s.eeg_filename || '-'}</td>
+                <td>${s.bad_channels || '-'}</td>
+                <td>${s.notes || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Documento generato automaticamente il ${new Date().toLocaleString()} - EEG Lab Manager
+        </div>
+
+        <script>
+          window.onload = () => { setTimeout(() => window.print(), 500); }
+        </script>
+      </body>
+    </html>
+  `;
+
+  printWindow.document.open();
+  printWindow.document.write(htmlContent);
+  printWindow.document.close();
+};
+
 // --- COMPONENTI ---
 
 // 1. AUTH SCREEN
@@ -179,12 +311,12 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
   };
 
   const handleDeleteExperiment = async (e, id) => {
-    e.stopPropagation(); // Evita di aprire il dettaglio quando si clicca il cestino
+    e.stopPropagation(); 
     if (!window.confirm("⚠️ SEI SICURO? Eliminando l'esperimento verranno cancellate anche tutte le sue sessioni.")) return;
     
     const { error } = await supabase.from('experiments').delete().eq('id', id);
     if (error) alert("Errore eliminazione: " + error.message);
-    else fetchExperiments(); // Ricarica la lista
+    else fetchExperiments();
   };
 
   return (
@@ -246,8 +378,24 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    {/* Tasto Eliminazione rapida in lista */}
+                  <div className="flex items-center gap-1">
+                    {/* Tasti Export */}
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); exportExperimentToPdf(exp); }}
+                      className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10"
+                      title="PDF Report"
+                    >
+                      <Printer className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); exportExperimentToCsv(exp); }}
+                      className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors z-10"
+                      title="Excel CSV"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+
+                    {/* Tasto Eliminazione */}
                     {(profile?.role === 'ADMIN' || exp.created_by === session.user.id) && (
                       <button 
                         onClick={(e) => handleDeleteExperiment(e, exp.id)}
@@ -257,7 +405,7 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     )}
-                    <ChevronRight className="text-slate-300 w-5 h-5" />
+                    <ChevronRight className="text-slate-300 w-5 h-5 ml-1" />
                   </div>
                 </div>
               </div>
@@ -270,7 +418,6 @@ const Dashboard = ({ session, profile, onSelectExperiment }) => {
         <Plus className="w-6 h-6" />
       </button>
 
-      {/* MODAL NUOVO ESPERIMENTO */}
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
@@ -337,7 +484,7 @@ const InviteGenerator = ({ onClose, session }) => {
   );
 };
 
-// 4. DETTAGLIO ESPERIMENTO (Con Eliminazione)
+// 4. DETTAGLIO ESPERIMENTO
 const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onBack }) => {
   const [experiment, setExperiment] = useState(initialExperiment);
   const [sessions, setSessions] = useState([]);
@@ -353,13 +500,10 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
   };
   useEffect(() => { fetchSessions(); }, [experiment]);
 
-  // ELIMINA ESPERIMENTO (Dettaglio)
   const handleDeleteExperiment = async () => {
     if (!window.confirm("⚠️ SEI SICURO? Eliminando l'esperimento verranno cancellate anche tutte le sue sessioni.")) return;
-    
     const { error } = await supabase.from('experiments').delete().eq('id', experiment.id);
-    if (error) alert(error.message);
-    else onBack();
+    if (error) alert(error.message); else onBack();
   };
 
   const handleUpdateExperiment = async (e) => {
@@ -371,15 +515,9 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
       date: formData.get('date'),
       notes: formData.get('notes')
     };
-
     const { error } = await supabase.from('experiments').update(updates).eq('id', experiment.id);
-    
-    if (!error) {
-      setExperiment({ ...experiment, ...updates });
-      setIsEditingExp(false);
-    } else {
-      alert("Errore aggiornamento: " + error.message);
-    }
+    if (!error) { setExperiment({ ...experiment, ...updates }); setIsEditingExp(false); } 
+    else alert(error.message);
   };
 
   const handleSaveSession = async (e) => {
@@ -387,7 +525,6 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
     const formData = new FormData(e.target);
     const photoFile = formData.get('photo');
     let photoUrl = sessionToEdit?.setup_photo_url || null;
-
     setUploading(true);
     
     if (photoFile && photoFile.size > 0) {
@@ -416,12 +553,7 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
     }
 
     setUploading(false);
-    if (!error) { 
-      setSessionToEdit(null); 
-      fetchSessions(); 
-    } else {
-      alert("Errore: " + error.message);
-    }
+    if (!error) { setSessionToEdit(null); fetchSessions(); } else alert(error.message);
   };
 
   const handleDeleteSession = async (id) => {
@@ -442,69 +574,44 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
           <p className="text-xs text-slate-500 truncate">ID: {experiment.id.slice(0,8)}...</p>
         </div>
         
-        {canEdit && (
-          <div className="flex gap-1">
-            <button onClick={() => setIsEditingExp(true)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors">
-              <Pencil className="w-5 h-5" />
-            </button>
-            <button onClick={handleDeleteExperiment} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors">
-              <Trash2 className="w-5 h-5" />
-            </button>
-          </div>
-        )}
+        <div className="flex gap-1">
+          <button onClick={() => exportExperimentToPdf(experiment)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50" title="Report PDF"><Printer className="w-5 h-5" /></button>
+          <button onClick={() => exportExperimentToCsv(experiment)} className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50" title="Export CSV"><Download className="w-5 h-5" /></button>
+
+          {canEdit && (
+            <>
+              <button onClick={() => setIsEditingExp(true)} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-full transition-colors"><Pencil className="w-5 h-5" /></button>
+              <button onClick={handleDeleteExperiment} className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"><Trash2 className="w-5 h-5" /></button>
+            </>
+          )}
+        </div>
       </div>
 
       <main className="max-w-3xl mx-auto p-4 space-y-6">
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
            <div className="grid grid-cols-2 gap-4">
-             <div>
-               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sperimentatore</label>
-               <p className="text-sm font-medium text-slate-800">{experiment.experimenter}</p>
-             </div>
-             <div>
-               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data Inizio</label>
-               <p className="text-sm font-medium text-slate-800">{new Date(experiment.date).toLocaleDateString()}</p>
-             </div>
+             <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sperimentatore</label><p className="text-sm font-medium text-slate-800">{experiment.experimenter}</p></div>
+             <div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data Inizio</label><p className="text-sm font-medium text-slate-800">{new Date(experiment.date).toLocaleDateString()}</p></div>
            </div>
-           {experiment.notes && (
-             <div className="mt-4 pt-4 border-t border-slate-50">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Note</label>
-                <p className="text-sm text-slate-600 mt-1 italic">{experiment.notes}</p>
-             </div>
-           )}
+           {experiment.notes && <div className="mt-4 pt-4 border-t border-slate-50"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Note</label><p className="text-sm text-slate-600 mt-1 italic">{experiment.notes}</p></div>}
         </div>
 
-        <h3 className="font-bold text-slate-700 flex items-center gap-2">
-          Sessioni <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-xs">{sessions.length}</span>
-        </h3>
+        <h3 className="font-bold text-slate-700 flex items-center gap-2">Sessioni <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-xs">{sessions.length}</span></h3>
         
         <div className="space-y-3">
           {sessions.map(sess => (
             <div key={sess.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
               <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-                <h4 className="font-bold text-emerald-600 flex items-center gap-2">
-                  <Users className="w-4 h-4" /> {sess.subject_id}
-                </h4>
-                {canEdit && (
-                  <div className="flex gap-1">
-                    <button onClick={() => setSessionToEdit(sess)} className="text-slate-400 hover:text-emerald-600 p-2 rounded-full hover:bg-white transition-all">
-                      <Pencil className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => handleDeleteSession(sess.id)} className="text-slate-400 hover:text-red-500 p-2 rounded-full hover:bg-white transition-all">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                <h4 className="font-bold text-emerald-600 flex items-center gap-2"><Users className="w-4 h-4" /> {sess.subject_id}</h4>
+                {canEdit && <div className="flex gap-1">
+                    <button onClick={() => setSessionToEdit(sess)} className="text-slate-400 hover:text-emerald-600 p-2"><Pencil className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteSession(sess.id)} className="text-slate-400 hover:text-red-500 p-2"><Trash2 className="w-4 h-4" /></button>
+                </div>}
               </div>
               <div className="p-4 text-sm space-y-2">
                  <p className="flex gap-2 items-center"><FileText className="w-4 h-4 text-slate-400"/> <span className="text-slate-500">File:</span> <span className="font-mono bg-slate-100 px-1 rounded text-slate-700">{sess.eeg_filename}</span></p>
                  {sess.bad_channels && <p className="flex gap-2 items-center"><Activity className="w-4 h-4 text-orange-400"/> <span className="text-slate-500">Bad Ch:</span> {sess.bad_channels}</p>}
-                 {sess.setup_photo_url && (
-                   <div className="mt-3">
-                     <p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Camera className="w-3 h-3"/> Setup Foto:</p>
-                     <img src={sess.setup_photo_url} alt="Setup" className="w-full h-40 object-cover rounded-lg border border-slate-100" />
-                   </div>
-                 )}
+                 {sess.setup_photo_url && <div className="mt-3"><p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Camera className="w-3 h-3"/> Setup Foto:</p><img src={sess.setup_photo_url} alt="Setup" className="w-full h-40 object-cover rounded-lg border border-slate-100" /></div>}
                  {sess.notes && <p className="text-xs text-slate-500 italic mt-2 border-l-2 border-slate-200 pl-2">{sess.notes}</p>}
               </div>
             </div>
@@ -512,11 +619,7 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
         </div>
       </main>
 
-      {canEdit && (
-        <button onClick={() => setSessionToEdit({})} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 flex gap-2 pr-6 transition-transform active:scale-95">
-          <Plus className="w-6 h-6" /> <span className="font-bold">Sessione</span>
-        </button>
-      )}
+      {canEdit && <button onClick={() => setSessionToEdit({})} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 flex gap-2 pr-6"><Plus className="w-6 h-6" /> <span className="font-bold">Sessione</span></button>}
 
       {isEditingExp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
@@ -547,16 +650,11 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
                </div>
                <input name="eegFile" defaultValue={sessionToEdit.eeg_filename} placeholder="Nome file EEG" className="w-full p-3 bg-slate-50 rounded-lg outline-none font-mono" />
                <input name="badChannels" defaultValue={sessionToEdit.bad_channels} placeholder="Bad Channels" className="w-full p-3 bg-slate-50 rounded-lg outline-none" />
-               <div>
-                  <label className="block text-xs font-bold text-slate-500 mb-1">Foto Setup {sessionToEdit.setup_photo_url && '(Lascia vuoto per mantenere attuale)'}</label>
-                  <input type="file" name="photo" accept="image/*" className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100"/>
-               </div>
+               <div><label className="block text-xs font-bold text-slate-500 mb-1">Foto Setup {sessionToEdit.setup_photo_url && '(Lascia vuoto per mantenere attuale)'}</label><input type="file" name="photo" accept="image/*" className="w-full text-sm text-slate-500"/></div>
                <textarea name="notes" defaultValue={sessionToEdit.notes} placeholder="Note..." className="w-full p-3 bg-slate-50 rounded-lg outline-none h-20" />
                <div className="flex gap-3 mt-4">
                  <button type="button" onClick={() => setSessionToEdit(null)} className="flex-1 py-3 text-slate-600 font-medium">Annulla</button>
-                 <button type="submit" disabled={uploading} className="flex-1 py-3 bg-emerald-600 text-white rounded-lg flex justify-center gap-2">
-                    {uploading ? 'Caricamento...' : <><Save className="w-4 h-4" /> Salva</>}
-                 </button>
+                 <button type="submit" disabled={uploading} className="flex-1 py-3 bg-emerald-600 text-white rounded-lg">{uploading ? '...' : 'Salva'}</button>
                </div>
             </form>
           </div>
@@ -576,19 +674,12 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) fetchProfile(session.user.id);
-      else setLoading(false);
+      if (session) fetchProfile(session.user.id); else setLoading(false);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session) fetchProfile(session.user.id);
-      else {
-        setProfile(null);
-        setLoading(false);
-      }
+      if (session) fetchProfile(session.user.id); else { setProfile(null); setLoading(false); }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -599,25 +690,7 @@ export default function App() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-400">Caricamento...</div>;
-
   if (!session) return <AuthScreen />;
-
-  if (selectedExperiment) {
-    return (
-      <ExperimentDetail 
-        experiment={selectedExperiment} 
-        session={session}
-        profile={profile}
-        onBack={() => setSelectedExperiment(null)}
-      />
-    );
-  }
-
-  return (
-    <Dashboard 
-      session={session} 
-      profile={profile} 
-      onSelectExperiment={setSelectedExperiment}
-    />
-  );
+  if (selectedExperiment) return <ExperimentDetail experiment={selectedExperiment} session={session} profile={profile} onBack={() => setSelectedExperiment(null)} />;
+  return <Dashboard session={session} profile={profile} onSelectExperiment={setSelectedExperiment} />;
 }
