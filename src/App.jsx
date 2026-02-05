@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// ⚠️ PASSO 1: IN LOCALE, TOGLI IL COMMENTO DALLA RIGA QUI SOTTO:
+// ⚠️ STEP 1: DECOMMENTA QUESTA RIGA PER ATTIVARE IL DATABASE REALE
 import { createClient } from '@supabase/supabase-js';
 
 import { 
@@ -32,7 +32,7 @@ import {
 
 // --- CONFIGURAZIONE SUPABASE ---
 
-// ⚠️ PASSO 2: IN LOCALE, TOGLI I COMMENTI DA QUESTO BLOCCO:
+// ⚠️ STEP 2: DECOMMENTA QUESTO BLOCCO E INSERISCI LE TUE CHIAVI NEL FILE .env
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -45,14 +45,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 
 
-// --- MOCK CLIENT (DA CANCELLARE IN LOCALE) ---
-// Questo serve SOLO per evitare errori qui nella chat. Cancellalo nel tuo file reale.
+// --- MOCK CLIENT (⚠️ STEP 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
 /* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    signInWithPassword: async () => ({ error: { message: "⚠️ SEI IN ANTEPRIMA. Decommenta il codice Supabase in alto per usare il DB reale." } }),
-    signUp: async () => ({ error: { message: "Funzione disponibile solo in locale." } }),
+    signInWithPassword: async () => ({ error: { message: "⚠️ SEI IN MOCK MODE. Decommenta le righe in alto nel file App.jsx per collegarti al vero database." } }),
+    signUp: async () => ({ error: { message: "Funzione disponibile solo con database reale." } }),
     signOut: async () => {},
   },
   from: () => ({
@@ -186,47 +185,58 @@ const TeamManager = ({ onClose, session }) => {
   const handleManualAdd = async (e) => {
     e.preventDefault();
     setLoading(true);
+
     try {
+      // Verifica preliminare libreria
+      if (typeof createClient === 'undefined') {
+        throw new Error("Libreria Supabase non caricata. Hai decommentato la riga 'import' in alto?");
+      }
+      
+      // Verifica variabili ambiente
+      const url = import.meta.env.VITE_SUPABASE_URL;
+      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      if (!url || !key) throw new Error("Variabili d'ambiente mancanti nel file .env.");
+
       const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
       const hiddenCode = `MANUAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
       
+      // 1. Crea invito nascosto (fondamentale per i permessi SQL)
       const { error: inviteError } = await supabase.from('invites').insert({
         code: hiddenCode, role, created_by: session.user.id
       });
-      if (inviteError) throw new Error("Errore permessi: " + inviteError.message);
+      if (inviteError) throw new Error("Errore DB Inviti: " + inviteError.message);
 
-      // ⚠️ PASSO 3: IN LOCALE, DECOMMENTA E USA QUESTO BLOCCO 'IF' PER USARE IL CLIENT TEMPORANEO
-      /*
-      if (typeof createClient !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
-         // @ts-ignore
-         const tempClient = createClient(
-            import.meta.env.VITE_SUPABASE_URL, 
-            import.meta.env.VITE_SUPABASE_ANON_KEY, 
-            { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
-         );
-         const { error: signUpError } = await tempClient.auth.signUp({
-           email: manualEmail, password: manualPassword,
-           options: { data: { invite_code: hiddenCode } }
-         });
-         if (signUpError) throw signUpError;
-      } else {
-         // FALLBACK (CANCELLA IN LOCALE)
-         const { error } = await supabase.auth.signUp({ email: manualEmail });
-         if (error) throw error;
-      }
-      */
-     
-      // FALLBACK MOCK (DA CANCELLARE IN LOCALE QUANDO DECOMMENTI SOPRA)
-     /*  alert("Simulazione creazione utente manuale (Funziona solo in locale con codice decommentato)"); */
+      // 2. Client Temporaneo (isolato) per non sloggare l'admin
+      const tempClient = createClient(url, key, {
+        auth: {
+          persistSession: false, // Non salvare nulla in localStorage
+          autoRefreshToken: false,
+          detectSessionInUrl: false
+        }
+      });
 
-      // Se hai decommentato sopra, questo alert non serve:
-      alert(`✅ Utente creato!\nEmail: ${manualEmail}\nPassword: ${manualPassword}`);
+      // 3. Registra l'utente
+      const { data, error: signUpError } = await tempClient.auth.signUp({
+        email: manualEmail,
+        password: manualPassword,
+        options: { data: { invite_code: hiddenCode } } // Passa codice per il trigger SQL
+      });
+
+      if (signUpError) throw signUpError;
+
+      alert(`✅ UTENTE CREATO CON SUCCESSO!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}\n\nNota: Se l'email non arriva, verifica le impostazioni SMTP di Supabase.`);
+      setManualEmail('');
+      setManualPassword('');
       
-      setManualEmail(''); setManualPassword('');
-      setTimeout(() => { setActiveTab('LIST'); fetchUsers(); }, 2000);
+      // 4. Aggiorna lista dopo breve attesa (per dare tempo al trigger)
+      setTimeout(() => {
+        setActiveTab('LIST');
+        fetchUsers();
+      }, 1500);
 
     } catch (err) {
-      alert("Errore creazione: " + err.message);
+      console.error(err);
+      alert("ERRORE CREAZIONE: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -255,8 +265,8 @@ const TeamManager = ({ onClose, session }) => {
         {activeTab === 'CREATE' && (
           <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-100 mb-4 animate-in slide-in-from-right-4">
             <h4 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5"/> Crea Nuovo Account</h4>
-            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2 mb-4 text-xs">
-              <strong>Nota:</strong> Ricorda di decommentare il codice di creazione utente in App.jsx per far funzionare questa feature.
+            <div className="bg-white/60 p-3 rounded text-xs text-emerald-800 mb-4 border border-emerald-100">
+               ⚠️ Questa funzione richiede che il file App.jsx sia configurato con il codice reale (decommentato).
             </div>
             <form onSubmit={handleManualAdd} className="space-y-4">
               <div className="flex gap-2 mb-2">
