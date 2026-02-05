@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-
-// ⚠️ STEP 1: DECOMMENTA QUESTA RIGA PER ATTIVARE IL DATABASE REALE
+// ⚠️ PASSO 1: DECOMMENTA QUESTA RIGA PER IL DATABASE REALE
 import { createClient } from '@supabase/supabase-js';
 
 import { 
@@ -32,20 +31,19 @@ import {
 
 // --- CONFIGURAZIONE SUPABASE ---
 
-// ⚠️ STEP 2: DECOMMENTA QUESTO BLOCCO E INSERISCI LE TUE CHIAVI NEL FILE .env
+// ⚠️ PASSO 2: DECOMMENTA QUESTO BLOCCO E ASSICURATI DI AVERE IL FILE .env
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("ERRORE CRITICO: Variabili d'ambiente VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY mancanti.");
+  console.error("ERRORE CRITICO: Variabili d'ambiente mancanti.");
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 
-
-// --- MOCK CLIENT (⚠️ STEP 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
+// --- MOCK CLIENT (⚠️ PASSO 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
 /* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
@@ -187,52 +185,56 @@ const TeamManager = ({ onClose, session }) => {
     setLoading(true);
 
     try {
-      // Verifica preliminare libreria
-      if (typeof createClient === 'undefined') {
-        throw new Error("Libreria Supabase non caricata. Hai decommentato la riga 'import' in alto?");
+      // 1. Validazione di base
+      if (!manualEmail.includes('@') || manualPassword.length < 6) {
+        throw new Error("Email non valida o password troppo corta (min 6 caratteri).");
       }
-      
-      // Verifica variabili ambiente
-      const url = import.meta.env.VITE_SUPABASE_URL;
-      const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!url || !key) throw new Error("Variabili d'ambiente mancanti nel file .env.");
 
       const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
       const hiddenCode = `MANUAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
       
-      // 1. Crea invito nascosto (fondamentale per i permessi SQL)
+      // 2. Crea invito nascosto nel DB
+      // Questo è cruciale perché il trigger 'handle_new_user' su Supabase controlla che esista un invito
       const { error: inviteError } = await supabase.from('invites').insert({
         code: hiddenCode, role, created_by: session.user.id
       });
-      if (inviteError) throw new Error("Errore DB Inviti: " + inviteError.message);
 
-      // 2. Client Temporaneo (isolato) per non sloggare l'admin
-      const tempClient = createClient(url, key, {
-        auth: {
-          persistSession: false, // Non salvare nulla in localStorage
-          autoRefreshToken: false,
-          detectSessionInUrl: false
-        }
-      });
+      if (inviteError) throw new Error("Impossibile creare permesso: " + inviteError.message);
 
-      // 3. Registra l'utente
-      const { data, error: signUpError } = await tempClient.auth.signUp({
-        email: manualEmail,
-        password: manualPassword,
-        options: { data: { invite_code: hiddenCode } } // Passa codice per il trigger SQL
-      });
+      // 3. Creazione utente con client temporaneo
+      // Usiamo un client usa e getta per non disconnettere l'admin corrente
+      if (typeof createClient !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
+         // @ts-ignore
+         const tempClient = createClient(
+            import.meta.env.VITE_SUPABASE_URL, 
+            import.meta.env.VITE_SUPABASE_ANON_KEY, 
+            {
+              auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+            }
+         );
 
-      if (signUpError) throw signUpError;
+         const { error: signUpError } = await tempClient.auth.signUp({
+           email: manualEmail,
+           password: manualPassword,
+           options: { 
+             data: { invite_code: hiddenCode } // Passa il codice per il trigger
+           }
+         });
 
-      alert(`✅ UTENTE CREATO CON SUCCESSO!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}\n\nNota: Se l'email non arriva, verifica le impostazioni SMTP di Supabase.`);
+         if (signUpError) throw signUpError;
+      } else {
+         throw new Error("Configurazione Supabase mancante o client non disponibile.");
+      }
+
+      alert(`✅ UTENTE CREATO!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}\n\nIMPORTANTE: Se "Confirm Email" è attivo su Supabase, l'utente non potrà accedere finché non clicca sul link nella mail.`);
       setManualEmail('');
       setManualPassword('');
       
-      // 4. Aggiorna lista dopo breve attesa (per dare tempo al trigger)
+      // Aggiorna lista dopo breve attesa
       setTimeout(() => {
         setActiveTab('LIST');
         fetchUsers();
-      }, 1500);
+      }, 2000);
 
     } catch (err) {
       console.error(err);
@@ -266,7 +268,7 @@ const TeamManager = ({ onClose, session }) => {
           <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-100 mb-4 animate-in slide-in-from-right-4">
             <h4 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5"/> Crea Nuovo Account</h4>
             <div className="bg-white/60 p-3 rounded text-xs text-emerald-800 mb-4 border border-emerald-100">
-               ⚠️ Questa funzione richiede che il file App.jsx sia configurato con il codice reale (decommentato).
+               ⚠️ Per il login immediato, disabilita "Confirm Email" nella dashboard di Supabase.
             </div>
             <form onSubmit={handleManualAdd} className="space-y-4">
               <div className="flex gap-2 mb-2">
@@ -413,6 +415,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
           </div>
         </div>
       </header>
+
       <main className="max-w-3xl mx-auto p-4">
         <h2 className="text-xl font-bold text-slate-800 mb-4">{profile?.role === 'ADMIN' ? 'Tutti gli Esperimenti' : 'I Miei Esperimenti'}</h2>
         {experiments.length === 0 ? (<div className="text-center py-12 text-slate-400"><Database className="w-12 h-12 mx-auto mb-3 opacity-20" /><p>Nessun esperimento trovato.</p></div>) : (
