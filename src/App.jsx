@@ -67,7 +67,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
 };
-// ----------- */------------------------------------------------
+// ----------- */
 
 // --- ICONA PRINTER MANUALE ---
 const PrinterIcon = (props) => (
