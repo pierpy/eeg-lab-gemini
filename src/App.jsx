@@ -196,7 +196,7 @@ const TeamManager = ({ onClose, session }) => {
       if (inviteError) throw new Error("Errore permessi: " + inviteError.message);
 
       // ⚠️ PASSO 3: IN LOCALE, DECOMMENTA E USA QUESTO BLOCCO 'IF' PER USARE IL CLIENT TEMPORANEO
-      
+      /*
       if (typeof createClient !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
          // @ts-ignore
          const tempClient = createClient(
@@ -214,13 +214,13 @@ const TeamManager = ({ onClose, session }) => {
          const { error } = await supabase.auth.signUp({ email: manualEmail });
          if (error) throw error;
       }
-     
+      */
      
       // FALLBACK MOCK (DA CANCELLARE IN LOCALE QUANDO DECOMMENTI SOPRA)
-      alert("Simulazione creazione utente manuale (Funziona solo in locale con codice decommentato)");
+     /*  alert("Simulazione creazione utente manuale (Funziona solo in locale con codice decommentato)"); */
 
       // Se hai decommentato sopra, questo alert non serve:
-      // alert(`✅ Utente creato!\nEmail: ${manualEmail}\nPassword: ${manualPassword}`);
+      alert(`✅ Utente creato!\nEmail: ${manualEmail}\nPassword: ${manualPassword}`);
       
       setManualEmail(''); setManualPassword('');
       setTimeout(() => { setActiveTab('LIST'); fetchUsers(); }, 2000);
