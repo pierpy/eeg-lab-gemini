@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+
 // ⚠️ PASSO 1: DECOMMENTA QUESTA RIGA PER IL DATABASE REALE
-import { createClient } from '@supabase/supabase-js';
+// import { createClient } from '@supabase/supabase-js';
 
 import { 
   Printer, 
@@ -32,7 +33,7 @@ import {
 // --- CONFIGURAZIONE SUPABASE ---
 
 // ⚠️ PASSO 2: DECOMMENTA QUESTO BLOCCO E ASSICURATI DI AVERE IL FILE .env
-
+/*
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -41,15 +42,16 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
+*/
 
 // --- MOCK CLIENT (⚠️ PASSO 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
-/* const supabase = {
+const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     signInWithPassword: async () => ({ error: { message: "⚠️ SEI IN MOCK MODE. Decommenta le righe in alto nel file App.jsx per collegarti al vero database." } }),
     signUp: async () => ({ error: { message: "Funzione disponibile solo con database reale." } }),
+    updateUser: async () => ({ error: null }), // Mock update user
     signOut: async () => {},
   },
   from: () => ({
@@ -59,7 +61,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
-}; */
+};
 // -----------------------------------------------------------
 
 
@@ -93,6 +95,57 @@ const exportExperimentToCsv = async (experiment) => {
 };
 
 // --- COMPONENTI ---
+
+// Modale Cambio Password
+const ChangePasswordModal = ({ onClose }) => {
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    // Funzione Supabase per aggiornare l'utente corrente
+    const { error } = await supabase.auth.updateUser({ password: password });
+    
+    setLoading(false);
+    if (error) {
+      alert("Errore aggiornamento password: " + error.message);
+    } else {
+      alert("Password aggiornata con successo!");
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+        <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-slate-800">
+          <Lock className="w-5 h-5 text-emerald-600"/> Cambia Password
+        </h3>
+        <p className="text-sm text-slate-500 mb-4">Inserisci la nuova password per il tuo account.</p>
+        
+        <form onSubmit={handleUpdate} className="space-y-4">
+          <input 
+            type="password" 
+            placeholder="Nuova Password (min 6 caratteri)" 
+            required 
+            minLength={6}
+            className="w-full p-3 rounded-lg border border-slate-300 outline-none focus:ring-2 focus:ring-emerald-500"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-600 font-medium hover:bg-slate-50 rounded-lg">Annulla</button>
+            <button type="submit" disabled={loading} className="flex-1 py-3 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700">
+              {loading ? 'Salvataggio...' : 'Conferma'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 const ExperimentReport = ({ experiment, onClose }) => {
   const [sessions, setSessions] = useState(null);
@@ -376,6 +429,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
   const [experiments, setExperiments] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
   const [showTeamManager, setShowTeamManager] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const fetchExperiments = async () => {
     const { data, error } = await supabase.from('experiments').select('*, profiles:created_by ( email )').order('created_at', { ascending: false });
@@ -410,6 +464,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
           <div className="flex items-center gap-2"><Activity className="text-emerald-600 w-6 h-6" /><h1 className="font-bold text-lg text-slate-800">EEG Lab</h1></div>
           <div className="flex items-center gap-2">
              <span className="text-xs font-mono px-2 py-1 bg-slate-100 rounded text-slate-600 font-bold">{profile?.role}</span>
+             <button onClick={() => setShowPasswordModal(true)} className="p-2 text-slate-400 hover:text-emerald-600" title="Cambia Password"><Lock className="w-5 h-5" /></button>
              {profile?.role === 'ADMIN' && (<button onClick={() => setShowTeamManager(true)} className="p-2 text-emerald-600 bg-emerald-50 rounded-full hover:bg-emerald-100" title="Gestione Team"><UserCog className="w-5 h-5" /></button>)}
              <button onClick={() => supabase.auth.signOut()} className="p-2 text-slate-400 hover:text-red-500"><LogOut className="w-5 h-5" /></button>
           </div>
@@ -456,6 +511,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
         </div>
       )}
       {showTeamManager && <TeamManager onClose={() => setShowTeamManager(false)} session={session} />}
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </div>
   );
 };
