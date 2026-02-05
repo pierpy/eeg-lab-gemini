@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-// ⚠️ REAL SUPABASE: Decommenta la riga qui sotto nel tuo progetto locale
+
+// ⚠️ PASSO 1: IN LOCALE, TOGLI IL COMMENTO DALLA RIGA QUI SOTTO:
 import { createClient } from '@supabase/supabase-js';
 
 import { 
@@ -25,12 +26,13 @@ import {
   UserCog, 
   UserPlus,
   Mail,
-  Lock
+  Lock,
+  AlertTriangle
 } from 'lucide-react';
 
 // --- CONFIGURAZIONE SUPABASE ---
 
-// ⚠️ REAL SUPABASE: Decommenta questo blocco nel tuo progetto locale e assicurati di avere il file .env
+// ⚠️ PASSO 2: IN LOCALE, TOGLI I COMMENTI DA QUESTO BLOCCO:
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -42,68 +44,46 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 
-// --- MOCK CLIENT (SOLO PER ANTEPRIMA WEB - CANCELLA IN LOCALE) ---
-// Questo blocco simula Supabase per evitare errori in questa chat.
-// Quando usi il codice reale, CANCELLA TUTTO QUESTO BLOCCO.
+
+// --- MOCK CLIENT (DA CANCELLARE IN LOCALE) ---
+// Questo serve SOLO per evitare errori qui nella chat. Cancellalo nel tuo file reale.
 /* const supabase = {
   auth: {
-    getSession: async () => ({ data: { session: { user: { id: 'mock-admin', email: 'admin@lab.com' } } } }),
+    getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx per il login." } }),
-    signUp: async () => ({ error: { message: "Funzione disponibile solo con Supabase reale attivato." } }),
+    signInWithPassword: async () => ({ error: { message: "⚠️ SEI IN ANTEPRIMA. Decommenta il codice Supabase in alto per usare il DB reale." } }),
+    signUp: async () => ({ error: { message: "Funzione disponibile solo in locale." } }),
     signOut: async () => {},
   },
-  from: (table) => ({
-    select: () => ({ 
-      order: () => Promise.resolve({ data: [
-        { id: '1', name: 'Esperimento Alpha', experimenter: 'Dr. Rossi', date: new Date().toISOString(), created_by: 'mock-admin' },
-        { id: '2', name: 'Studio Beta', experimenter: 'Dr. Verdi', date: new Date().toISOString(), created_by: 'other' }
-      ], error: null }), 
-      eq: () => ({ 
-        order: () => Promise.resolve({ data: [], error: null }),
-        single: () => {
-          if (table === 'profiles') return Promise.resolve({ data: { id: 'mock-admin', role: 'ADMIN', email: 'admin@lab.com' } });
-          return Promise.resolve({ data: null });
-        } 
-      }) 
-    }),
-    insert: () => Promise.resolve({ error: null }),
+  from: () => ({
+    select: () => ({ order: () => Promise.resolve({ data: [], error: null }), eq: () => ({ single: () => Promise.resolve({ data: null }) }) }),
+    insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
     update: () => ({ eq: () => Promise.resolve({ error: null }) }),
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
-  }),
-  storage: {
-    from: () => ({
-      upload: async () => ({ data: {}, error: null }),
-      getPublicUrl: () => ({ data: { publicUrl: "https://via.placeholder.com/150" } })
-    })
-  }
+  })
 }; */
 // -----------------------------------------------------------
 
-// --- ICONA PRINTER MANUALE ---
+
+// --- ICONE E HELPER ---
 const PrinterIcon = (props) => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-    <path d="M6 9V2h12v7" />
-    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-    <path d="M6 14h12v8H6z" />
-  </svg>
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 14h12v8H6z" /></svg>
 );
 
-// --- HELPER: ESPORTAZIONE CSV ---
 const exportExperimentToCsv = async (experiment) => {
-  if (!window.confirm(`Vuoi scaricare i dati di "${experiment.name}" in formato Excel/CSV?`)) return;
+  if (!window.confirm(`Scaricare i dati di "${experiment.name}"?`)) return;
   const { data: sessions, error } = await supabase.from('sessions').select('*').eq('experiment_id', experiment.id);
   if (error) { alert("Errore download: " + error.message); return; }
-  // Mock data se vuoto
-  const dataToExport = (!sessions || sessions.length === 0) ? [{id:'mock', subject_id:'TEST', date: new Date().toISOString()}] : sessions;
+  if (!sessions || sessions.length === 0) { alert("Nessun dato da esportare."); return; }
   
   const headers = ["ID Esperimento", "Nome Esperimento", "Sperimentatore", "Data Inizio", "Note Exp", "ID Sessione", "Soggetto", "Data Sessione", "File EEG", "Canali Bad", "Note Sessione"];
   const escapeCsv = (text) => `"${(text || '').toString().replace(/"/g, '""')}"`;
-  const rows = dataToExport.map(s => [
+  const rows = sessions.map(s => [
     experiment.id, escapeCsv(experiment.name), escapeCsv(experiment.experimenter), new Date(experiment.date).toLocaleDateString(), escapeCsv(experiment.notes),
     s.id, escapeCsv(s.subject_id), new Date(s.date).toLocaleString(), escapeCsv(s.eeg_filename), escapeCsv(s.bad_channels), escapeCsv(s.notes)
   ]);
+  
   const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -115,7 +95,8 @@ const exportExperimentToCsv = async (experiment) => {
   document.body.removeChild(link);
 };
 
-// --- HELPER: ESPORTAZIONE PDF ---
+// --- COMPONENTI ---
+
 const ExperimentReport = ({ experiment, onClose }) => {
   const [sessions, setSessions] = useState(null);
   useEffect(() => {
@@ -177,7 +158,6 @@ const ExperimentReport = ({ experiment, onClose }) => {
   );
 };
 
-// --- COMPONENTE: GESTIONE TEAM ---
 const TeamManager = ({ onClose, session }) => {
   const [users, setUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('LIST'); 
@@ -199,14 +179,13 @@ const TeamManager = ({ onClose, session }) => {
     const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
     const newCode = `${prefix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     const { error } = await supabase.from('invites').insert({ code: newCode, role, created_by: session.user.id });
-    if (error) alert(error.message); else setGeneratedCode(newCode);
+    if (error) alert("Errore: " + error.message); else setGeneratedCode(newCode);
     setLoading(false);
   };
 
   const handleManualAdd = async (e) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
       const hiddenCode = `MANUAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
@@ -214,10 +193,9 @@ const TeamManager = ({ onClose, session }) => {
       const { error: inviteError } = await supabase.from('invites').insert({
         code: hiddenCode, role, created_by: session.user.id
       });
+      if (inviteError) throw new Error("Errore permessi: " + inviteError.message);
 
-      if (inviteError) throw new Error("Errore preparazione permessi (Invites): " + inviteError.message);
-
-      // ⚠️ REAL SUPABASE: Decommenta il blocco IF qui sotto e cancella l'ELSE di fallback
+      // ⚠️ PASSO 3: IN LOCALE, DECOMMENTA E USA QUESTO BLOCCO 'IF' PER USARE IL CLIENT TEMPORANEO
       /*
       if (typeof createClient !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
          // @ts-ignore
@@ -226,31 +204,25 @@ const TeamManager = ({ onClose, session }) => {
             import.meta.env.VITE_SUPABASE_ANON_KEY, 
             { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
          );
-
          const { error: signUpError } = await tempClient.auth.signUp({
-           email: manualEmail,
-           password: manualPassword,
+           email: manualEmail, password: manualPassword,
            options: { data: { invite_code: hiddenCode } }
          });
-
          if (signUpError) throw signUpError;
-
       } else {
-         // Fallback Mock (CANCELLA IN PRODUZIONE)
-         console.log("Mock Signup: ", manualEmail, manualPassword);
-         await new Promise(resolve => setTimeout(resolve, 500));
+         // FALLBACK (CANCELLA IN LOCALE)
+         const { error } = await supabase.auth.signUp({ email: manualEmail });
+         if (error) throw error;
       }
       */
-      
-      // MOCK FALLBACK (DA CANCELLARE IN LOCALE QUANDO USI IL BLOCCO SOPRA)
-      console.log("Mock Signup: ", manualEmail, manualPassword);
-      await new Promise(resolve => setTimeout(resolve, 500));
-      // ------------------------------------------------------------------
+     
+      // FALLBACK MOCK (DA CANCELLARE IN LOCALE QUANDO DECOMMENTI SOPRA)
+      alert("Simulazione creazione utente manuale (Funziona solo in locale con codice decommentato)");
 
-      alert(`✅ Utente creato con successo!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}`);
-      setManualEmail('');
-      setManualPassword('');
+      // Se hai decommentato sopra, questo alert non serve:
+      // alert(`✅ Utente creato!\nEmail: ${manualEmail}\nPassword: ${manualPassword}`);
       
+      setManualEmail(''); setManualPassword('');
       setTimeout(() => { setActiveTab('LIST'); fetchUsers(); }, 2000);
 
     } catch (err) {
@@ -261,7 +233,7 @@ const TeamManager = ({ onClose, session }) => {
   };
 
   const handleUpdateRole = async (userId, newRole) => {
-    if (userId === session.user.id) { alert("Non puoi modificare il tuo ruolo."); return; }
+    if (userId === session.user.id) { alert("Non puoi modificare il tuo stesso ruolo."); return; }
     if (!window.confirm(`Cambiare ruolo in ${newRole}?`)) return;
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     if (error) alert(error.message);
@@ -275,18 +247,16 @@ const TeamManager = ({ onClose, session }) => {
           <h3 className="text-xl font-bold flex items-center gap-2"><UserCog className="w-6 h-6 text-emerald-600"/> Gestione Team</h3>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><LogOut className="w-5 h-5 rotate-180"/></button>
         </div>
-
         <div className="flex gap-2 mb-6 p-1 bg-slate-100 rounded-xl">
           <button onClick={() => setActiveTab('LIST')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'LIST' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Lista Membri</button>
           <button onClick={() => setActiveTab('CREATE')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'CREATE' ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-emerald-600'}`}>+ Aggiungi Utente</button>
           <button onClick={() => setActiveTab('INVITE')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'INVITE' ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-blue-600'}`}>Genera Codice</button>
         </div>
-
         {activeTab === 'CREATE' && (
           <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-100 mb-4 animate-in slide-in-from-right-4">
             <h4 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5"/> Crea Nuovo Account</h4>
             <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2 mb-4 text-xs">
-              <strong>Nota:</strong> Assicurati di aver decommentato il codice "REAL SUPABASE" in App.jsx per far funzionare questa feature.
+              <strong>Nota:</strong> Ricorda di decommentare il codice di creazione utente in App.jsx per far funzionare questa feature.
             </div>
             <form onSubmit={handleManualAdd} className="space-y-4">
               <div className="flex gap-2 mb-2">
@@ -300,7 +270,6 @@ const TeamManager = ({ onClose, session }) => {
             </form>
           </div>
         )}
-
         {activeTab === 'INVITE' && (
           <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 mb-4 animate-in slide-in-from-right-4">
             <h4 className="font-bold text-blue-800 mb-4 flex items-center gap-2"><Key className="w-5 h-5"/> Genera Codice Invito</h4>
@@ -314,7 +283,6 @@ const TeamManager = ({ onClose, session }) => {
             )}
           </div>
         )}
-
         {activeTab === 'LIST' && (
           <div className="flex-1 overflow-y-auto pr-2 animate-in fade-in">
             <div className="space-y-2">
@@ -339,10 +307,7 @@ const TeamManager = ({ onClose, session }) => {
   );
 };
 
-// --- COMPONENTI ---
-
-// 1. AUTH SCREEN
-const AuthScreen = () => {
+const AuthScreen = ({ supabase }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -378,23 +343,15 @@ const AuthScreen = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-6">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100">
-        <div className="flex justify-center mb-6">
-          <div className="bg-emerald-600 p-3 rounded-full">
-            <Activity className="text-white w-8 h-8" />
-          </div>
-        </div>
+        <div className="flex justify-center mb-6"><div className="bg-emerald-600 p-3 rounded-full"><Activity className="text-white w-8 h-8" /></div></div>
         <h1 className="text-2xl font-bold text-center text-slate-800 mb-2">EEG Lab Manager</h1>
         <p className="text-center text-slate-500 mb-8">Accesso Laboratorio</p>
-
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs p-3 rounded mb-4">
-          <strong>Setup:</strong> Ricordati di decommentare le righe di Supabase nel codice per collegare il database reale!
-        </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
           <div><label className="block text-sm font-medium text-slate-700 mb-1">Email</label><input type="email" required className="w-full p-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div><label className="block text-sm font-medium text-slate-700 mb-1">Password</label><input type="password" required className="w-full p-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
           {isRegistering && (<div className="animate-in fade-in slide-in-from-top-2"><label className="block text-sm font-bold text-emerald-700 mb-1">Codice Invito</label><input type="text" required placeholder="Es. RES-1234" className="w-full p-3 rounded-lg border-2 border-emerald-100 focus:border-emerald-500 outline-none font-mono" value={inviteCode} onChange={(e) => setInviteCode(e.target.value)} /></div>)}
-          {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg">{error}</div>}
+          {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-start gap-2"><AlertTriangle className="w-5 h-5 shrink-0"/> {error}</div>}
           <button type="submit" disabled={loading} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors flex justify-center">{loading ? <Loader2 className="animate-spin" /> : (isRegistering ? 'Registrati' : 'Accedi')}</button>
         </form>
         <div className="mt-6 text-center"><button onClick={() => { setIsRegistering(!isRegistering); setError(''); }} className="text-emerald-600 text-sm font-medium hover:underline">{isRegistering ? 'Hai già un account? Accedi' : 'Non hai un account? Registrati'}</button></div>
@@ -403,7 +360,6 @@ const AuthScreen = () => {
   );
 };
 
-// 2. DASHBOARD
 const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
   const [experiments, setExperiments] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
@@ -447,7 +403,6 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
           </div>
         </div>
       </header>
-
       <main className="max-w-3xl mx-auto p-4">
         <h2 className="text-xl font-bold text-slate-800 mb-4">{profile?.role === 'ADMIN' ? 'Tutti gli Esperimenti' : 'I Miei Esperimenti'}</h2>
         {experiments.length === 0 ? (<div className="text-center py-12 text-slate-400"><Database className="w-12 h-12 mx-auto mb-3 opacity-20" /><p>Nessun esperimento trovato.</p></div>) : (
@@ -472,9 +427,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
           </div>
         )}
       </main>
-
       <button onClick={() => setShowNewModal(true)} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 active:scale-90"><Plus className="w-6 h-6" /></button>
-
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
@@ -489,13 +442,11 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
           </div>
         </div>
       )}
-
       {showTeamManager && <TeamManager onClose={() => setShowTeamManager(false)} session={session} />}
     </div>
   );
 };
 
-// 4. DETTAGLIO ESPERIMENTO
 const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onBack, onPrint }) => {
   const [experiment, setExperiment] = useState(initialExperiment);
   const [sessions, setSessions] = useState([]);
@@ -619,7 +570,6 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
   );
 };
 
-// 5. MAIN APP CONTAINER
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -646,7 +596,7 @@ export default function App() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-400">Caricamento...</div>;
-  if (!session) return <AuthScreen />;
+  if (!session) return <AuthScreen supabase={supabase} />;
 
   if (printingExperiment) return <ExperimentReport experiment={printingExperiment} onClose={() => setPrintingExperiment(null)} />;
   if (selectedExperiment) return <ExperimentDetail experiment={selectedExperiment} session={session} profile={profile} onBack={() => setSelectedExperiment(null)} onPrint={setPrintingExperiment} />;
