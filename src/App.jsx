@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
 import { 
-  Printer, // Spostato qui in alto per sicurezza
+  Printer, 
   Camera, 
   FileText, 
   Users, 
@@ -21,10 +21,44 @@ import {
   Check,
   User,
   Pencil,
-  Download
+  Download,
+  UserCog, // Nuova icona per gestione team
+  UserPlus // Nuova icona per aggiungere utenti
 } from 'lucide-react';
 
-// --- ICONA PRINTER MANUALE (PER RISOLVERE PROBLEMI DI IMPORT) ---
+// --- CONFIGURAZIONE SUPABASE ---
+// ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Mancano le variabili d'ambiente di Supabase (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)");
+}
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+
+// --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
+/* const supabase = {
+  auth: {
+    getSession: async () => ({ data: { session: null } }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+    signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx per il login." } }),
+    signUp: async () => ({ error: { message: "Funzione disponibile solo con Supabase reale attivato." } }),
+    signOut: async () => {},
+  },
+  from: () => ({
+    select: () => ({ order: () => Promise.resolve({ data: [], error: null }), eq: () => ({ single: () => Promise.resolve({ data: null }) }) }),
+    insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
+    update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }),
+    delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    eq: () => ({ single: () => Promise.resolve({ data: null }) })
+  })
+}; */
+// -----------------------------------------------------------
+
+// --- ICONA PRINTER MANUALE ---
 const PrinterIcon = (props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -43,40 +77,6 @@ const PrinterIcon = (props) => (
     <path d="M6 14h12v8H6z" />
   </svg>
 );
-
-// --- CONFIGURAZIONE SUPABASE ---
-// ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Mancano le variabili d'ambiente di Supabase (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-
-// --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
-// Questo serve solo per non far crashare l'anteprima in questa chat.
-// Quando usi il codice reale sopra, puoi cancellare o commentare questo blocco.
-/* const supabase = {
-  auth: {
-    getSession: async () => ({ data: { session: null } }),
-    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx per il login." } }),
-    signUp: async () => ({ error: { message: "Funzione disponibile solo con Supabase reale attivato." } }),
-    signOut: async () => {},
-  },
-  from: () => ({
-    select: () => ({ order: () => Promise.resolve({ data: [], error: null }), eq: () => ({ single: () => Promise.resolve({ data: null }) }) }),
-    insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
-    update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }),
-    delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    eq: () => ({ single: () => Promise.resolve({ data: null }) })
-  })
-}; */
-// -----------------------------------------------------------
 
 // --- HELPER: ESPORTAZIONE CSV (EXCEL) ---
 const exportExperimentToCsv = async (experiment) => {
@@ -109,7 +109,7 @@ const exportExperimentToCsv = async (experiment) => {
   document.body.removeChild(link);
 };
 
-// --- NUOVO COMPONENTE: REPORT DI STAMPA PDF ---
+// --- HELPER: ESPORTAZIONE PDF (STAMPA) ---
 const ExperimentReport = ({ experiment, onClose }) => {
   const [sessions, setSessions] = useState(null);
 
@@ -232,6 +232,106 @@ const ExperimentReport = ({ experiment, onClose }) => {
   );
 };
 
+// --- NUOVO COMPONENTE: GESTIONE TEAM (USERS) ---
+const TeamManager = ({ onClose, session }) => {
+  const [users, setUsers] = useState([]);
+  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [role, setRole] = useState('RESEARCHER');
+  const [generatedCode, setGeneratedCode] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch lista utenti
+  useEffect(() => {
+    const fetchUsers = async () => {
+      // Nota: Le policy RLS permettono la lettura di 'profiles'
+      const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      setUsers(data || []);
+    };
+    fetchUsers();
+  }, []);
+
+  const generateInvite = async () => {
+    setLoading(true);
+    const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
+    const newCode = `${prefix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const { error } = await supabase.from('invites').insert({
+      code: newCode, role, created_by: session.user.id
+    });
+    if (error) alert(error.message);
+    else setGeneratedCode(newCode);
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in zoom-in-95">
+      <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl h-[80vh] flex flex-col">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <UserCog className="w-6 h-6 text-emerald-600"/> Gestione Team
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><LogOut className="w-5 h-5 rotate-180"/></button>
+        </div>
+
+        {/* MODULO INVITO (Se attivato) */}
+        {showInviteForm ? (
+          <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6 shrink-0">
+            <div className="flex justify-between items-center mb-3">
+              <h4 className="font-bold text-emerald-800 flex items-center gap-2"><Key className="w-4 h-4"/> Nuovo Invito</h4>
+              <button onClick={() => { setShowInviteForm(false); setGeneratedCode(null); }} className="text-emerald-600 text-xs hover:underline">Chiudi</button>
+            </div>
+            
+            {!generatedCode ? (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  {['RESEARCHER', 'ADMIN'].map(r => (
+                    <button key={r} onClick={() => setRole(r)} className={`flex-1 py-2 rounded-lg border-2 font-bold text-xs ${role === r ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>{r}</button>
+                  ))}
+                </div>
+                <button onClick={generateInvite} disabled={loading} className="w-full py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm">
+                  {loading ? 'Generazione...' : 'Crea Codice'}
+                </button>
+              </div>
+            ) : (
+              <div className="text-center bg-white p-4 rounded-lg border border-emerald-200">
+                <p className="text-xs text-slate-500 mb-1 font-bold uppercase">Codice Generato</p>
+                <p className="text-2xl font-mono font-bold text-slate-800 select-all mb-2">{generatedCode}</p>
+                <p className="text-xs text-slate-400">Invia questo codice al nuovo utente.</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <button onClick={() => setShowInviteForm(true)} className="w-full py-3 mb-6 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shrink-0 hover:bg-slate-700 transition-colors">
+            <UserPlus className="w-5 h-5" /> Aggiungi Membro
+          </button>
+        )}
+
+        {/* LISTA UTENTI */}
+        <div className="flex-1 overflow-y-auto pr-2">
+          <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Membri Attivi ({users.length})</h4>
+          <div className="space-y-2">
+            {users.map(u => (
+              <div key={u.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm text-slate-800">{u.email}</p>
+                    <p className="text-xs text-slate-500">{new Date(u.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-1 rounded border ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                  {u.role}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- COMPONENTI ---
 
 // 1. AUTH SCREEN
@@ -317,7 +417,7 @@ const AuthScreen = () => {
 const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
   const [experiments, setExperiments] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showTeamManager, setShowTeamManager] = useState(false); // Stato per il gestore team
 
   const fetchExperiments = async () => {
     const { data, error } = await supabase
@@ -386,8 +486,8 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                {profile?.role}
              </span>
              {profile?.role === 'ADMIN' && (
-               <button onClick={() => setShowInviteModal(true)} className="p-2 text-emerald-600 bg-emerald-50 rounded-full hover:bg-emerald-100" title="Genera Codice">
-                 <Key className="w-5 h-5" />
+               <button onClick={() => setShowTeamManager(true)} className="p-2 text-emerald-600 bg-emerald-50 rounded-full hover:bg-emerald-100" title="Gestione Team">
+                 <UserCog className="w-5 h-5" />
                </button>
              )}
              <button onClick={() => supabase.auth.signOut()} className="p-2 text-slate-400 hover:text-red-500">
@@ -494,50 +594,8 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
         </div>
       )}
 
-      {showInviteModal && <InviteGenerator onClose={() => setShowInviteModal(false)} session={session} />}
-    </div>
-  );
-};
-
-// 3. GENERATORE INVITI
-const InviteGenerator = ({ onClose, session }) => {
-  const [role, setRole] = useState('RESEARCHER');
-  const [generatedCode, setGeneratedCode] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  const generateInvite = async () => {
-    setLoading(true);
-    const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
-    const newCode = `${prefix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const { error } = await supabase.from('invites').insert({
-      code: newCode, role, created_by: session.user.id
-    });
-    if (error) alert(error.message);
-    else setGeneratedCode(newCode);
-    setLoading(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Key className="w-5 h-5 text-emerald-600"/> Genera Invito</h3>
-        {!generatedCode ? (
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              {['RESEARCHER', 'ADMIN'].map(r => (
-                <button key={r} onClick={() => setRole(r)} className={`flex-1 py-2 rounded-lg border-2 font-bold text-xs ${role === r ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-slate-200 text-slate-500'}`}>{r}</button>
-              ))}
-            </div>
-            <button onClick={generateInvite} disabled={loading} className="w-full py-3 bg-slate-800 text-white rounded-lg">{loading ? '...' : 'Genera'}</button>
-            <button onClick={onClose} className="w-full py-2 text-slate-500 text-sm">Annulla</button>
-          </div>
-        ) : (
-          <div className="text-center space-y-4">
-            <div className="bg-slate-100 p-4 rounded-xl font-mono font-bold text-2xl tracking-wider select-all">{generatedCode}</div>
-            <button onClick={onClose} className="w-full py-3 bg-emerald-600 text-white rounded-lg">Fatto</button>
-          </div>
-        )}
-      </div>
+      {/* MODAL GESTIONE TEAM */}
+      {showTeamManager && <TeamManager onClose={() => setShowTeamManager(false)} session={session} />}
     </div>
   );
 };
