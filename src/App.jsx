@@ -30,13 +30,13 @@ import {
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
+ 
+ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+ const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("ERRORE: Variabili d'ambiente mancanti.");
-}
+ if (!supabaseUrl || !supabaseKey) {
+   console.error("ERRORE: Variabili d'ambiente mancanti.");
+ }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -53,7 +53,10 @@ const supabase = createClient(supabaseUrl, supabaseKey);
   },
   from: (table) => ({
     select: () => ({ 
-      order: () => Promise.resolve({ data: [], error: null }), 
+      order: () => Promise.resolve({ data: [
+        { id: '1', email: 'admin@lab.com', role: 'ADMIN', created_at: new Date().toISOString() },
+        { id: '2', email: 'ricercatore@lab.com', role: 'RESEARCHER', created_at: new Date().toISOString() }
+      ], error: null }), 
       eq: () => ({ 
         single: () => {
           if (table === 'profiles') return Promise.resolve({ data: { id: 'mock-admin', role: 'ADMIN', email: 'admin@lab.com' } });
@@ -61,13 +64,19 @@ const supabase = createClient(supabaseUrl, supabaseKey);
         } 
       }) 
     }),
-    insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
-    update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }),
+    insert: () => Promise.resolve({ error: null }), // Mock success insert
+    update: () => ({ eq: () => Promise.resolve({ error: null }) }), // Mock success update
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
-  })
+  }),
+  storage: {
+    from: () => ({
+      upload: async () => ({ data: {}, error: null }),
+      getPublicUrl: () => ({ data: { publicUrl: "https://via.placeholder.com/150" } })
+    })
+  }
 };
-// ----------- */
+// ------ */
 
 // --- ICONA PRINTER MANUALE ---
 const PrinterIcon = (props) => (
@@ -83,10 +92,12 @@ const exportExperimentToCsv = async (experiment) => {
   if (!window.confirm(`Vuoi scaricare i dati di "${experiment.name}" in formato Excel/CSV?`)) return;
   const { data: sessions, error } = await supabase.from('sessions').select('*').eq('experiment_id', experiment.id);
   if (error) { alert("Errore download: " + error.message); return; }
-  if (!sessions || sessions.length === 0) { alert("Nessun dato da esportare."); return; }
+  // Mock data for preview if empty
+  const dataToExport = sessions && sessions.length > 0 ? sessions : [{id: 'mock', subject_id: 'TEST', date: new Date().toISOString()}];
+  
   const headers = ["ID Esperimento", "Nome Esperimento", "Sperimentatore", "Data Inizio", "Note Exp", "ID Sessione", "Soggetto", "Data Sessione", "File EEG", "Canali Bad", "Note Sessione"];
   const escapeCsv = (text) => `"${(text || '').toString().replace(/"/g, '""')}"`;
-  const rows = sessions.map(s => [
+  const rows = dataToExport.map(s => [
     experiment.id, escapeCsv(experiment.name), escapeCsv(experiment.experimenter), new Date(experiment.date).toLocaleDateString(), escapeCsv(experiment.notes),
     s.id, escapeCsv(s.subject_id), new Date(s.date).toLocaleString(), escapeCsv(s.eeg_filename), escapeCsv(s.bad_channels), escapeCsv(s.notes)
   ]);
@@ -163,7 +174,7 @@ const ExperimentReport = ({ experiment, onClose }) => {
   );
 };
 
-// --- NUOVO COMPONENTE: GESTIONE TEAM (AGGIORNATO CON AGGIUNTA MANUALE) ---
+// --- NUOVO COMPONENTE: GESTIONE TEAM (AGGIORNATO CON AGGIUNTA MANUALE E MODIFICA RUOLO) ---
 const TeamManager = ({ onClose, session }) => {
   const [users, setUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('LIST'); 
@@ -216,13 +227,13 @@ const TeamManager = ({ onClose, session }) => {
       // Usiamo createClient che è ora disponibile
       let signUpResult;
       
-      // Controllo se siamo in ambiente reale (createClient disponibile)
       if (typeof createClient !== 'undefined') {
          // @ts-ignore
          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
          // @ts-ignore
          const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
          
+         // @ts-ignore
          const tempClient = createClient(supabaseUrl, supabaseKey, {
             auth: {
               persistSession: false, 
@@ -237,9 +248,8 @@ const TeamManager = ({ onClose, session }) => {
            options: { data: { invite_code: hiddenCode } } // Passiamo il codice nascosto
          });
       } else {
-         // Fallback per l'anteprima mock
+         // Fallback Mock per anteprima
          signUpResult = await supabase.auth.signUp({ email: manualEmail });
-         console.log("Mock User Created:", manualEmail, manualPassword, role);
       }
 
       const { error: signUpError } = signUpResult;
@@ -255,6 +265,25 @@ const TeamManager = ({ onClose, session }) => {
       alert("Errore creazione: " + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // C. Aggiorna Ruolo (Direttamente dalla lista)
+  const handleUpdateRole = async (userId, newRole) => {
+    if (userId === session.user.id) {
+      alert("Non puoi modificare il tuo stesso ruolo.");
+      return;
+    }
+
+    if (!window.confirm(`Sei sicuro di voler cambiare il ruolo in ${newRole}?`)) return;
+
+    const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
+    
+    if (error) {
+      alert("Errore aggiornamento ruolo: " + error.message);
+    } else {
+      // Aggiornamento ottimistico dell'interfaccia
+      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
     }
   };
 
@@ -355,9 +384,21 @@ const TeamManager = ({ onClose, session }) => {
                       <p className="text-xs text-slate-500">{new Date(u.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded border ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                    {u.role}
-                  </span>
+                  {/* Selettore Ruolo */}
+                  {u.id === session.user.id ? (
+                    <span className="text-[10px] font-bold px-2 py-1 rounded border bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed">
+                      {u.role}
+                    </span>
+                  ) : (
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleUpdateRole(u.id, e.target.value)}
+                      className={`text-[10px] font-bold px-2 py-1 rounded border outline-none cursor-pointer appearance-none text-center ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}
+                    >
+                      <option value="RESEARCHER">RESEARCHER</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  )}
                 </div>
               ))}
             </div>
