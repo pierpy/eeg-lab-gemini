@@ -35,13 +35,14 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Mancano le variabili d'ambiente di Supabase (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)");
+  console.error("ERRORE: Variabili d'ambiente mancanti.");
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 */
 
-// --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
+// --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE IN LOCALE/VERCEL) ---
+// Questo serve solo per non far crashare l'anteprima in questa chat.
 const supabase = {
   auth: {
     getSession: async () => ({ data: { session: { user: { id: 'mock-admin', email: 'admin@lab.com' } } } }),
@@ -165,7 +166,7 @@ const ExperimentReport = ({ experiment, onClose }) => {
 // --- NUOVO COMPONENTE: GESTIONE TEAM (AGGIORNATO CON AGGIUNTA MANUALE) ---
 const TeamManager = ({ onClose, session }) => {
   const [users, setUsers] = useState([]);
-  const [activeTab, setActiveTab] = useState('LIST'); // 'LIST', 'INVITE', 'CREATE'
+  const [activeTab, setActiveTab] = useState('LIST'); 
   const [role, setRole] = useState('RESEARCHER');
   
   // Stati per Invito
@@ -212,14 +213,16 @@ const TeamManager = ({ onClose, session }) => {
       if (inviteError) throw new Error("Errore preparazione permessi: " + inviteError.message);
 
       // 2. Crea l'utente usando un client temporaneo (per non disconnettere l'admin)
-      // ⚠️ ATTENZIONE: Questo richiede che 'createClient' sia decommentato in alto
+      // Usiamo createClient che è ora disponibile
       let signUpResult;
       
-      // Controllo se siamo in ambiente reale o mock
+      // Controllo se siamo in ambiente reale (createClient disponibile)
       if (typeof createClient !== 'undefined') {
-         // Creiamo un client che NON salva la sessione nel browser
-         // così l'Admin non viene buttato fuori
          // @ts-ignore
+         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+         // @ts-ignore
+         const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+         
          const tempClient = createClient(supabaseUrl, supabaseKey, {
             auth: {
               persistSession: false, 
@@ -548,9 +551,11 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                 onClick={() => onSelectExperiment(exp)}
                 className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 active:scale-[0.99] transition-transform cursor-pointer"
               >
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="font-semibold text-slate-800">{exp.name}</h3>
+                {/* FIX LAYOUT MOBILE: Aggiunto gap-2 e classi responsive */}
+                <div className="flex justify-between items-center gap-2">
+                  {/* FIX TEXT: Aggiunto min-w-0 e flex-1 per forzare il troncamento */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-slate-800 truncate">{exp.name}</h3>
                     {profile?.role === 'ADMIN' && exp.profiles?.email && (
                       <div className="flex items-center gap-1 mt-1 mb-2">
                         <span className="text-[10px] uppercase font-bold text-slate-400">Creato da:</span>
@@ -565,11 +570,33 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                     </div>
                   </div>
                   
+                  {/* FIX BUTTONS: Aggiunto shrink-0 per evitare che le icone si schiaccino */}
                   <div className="flex items-center gap-1 shrink-0">
-                    <button onClick={(e) => handlePrint(e, exp)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10" title="PDF Report"><PrinterIcon className="w-4 h-4" /></button>
-                    <button onClick={(e) => handleDownload(e, exp)} className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors z-10" title="Excel CSV"><Download className="w-4 h-4" /></button>
+                    {/* Tasti Export */}
+                    <button 
+                      onClick={(e) => handlePrint(e, exp)}
+                      className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10"
+                      title="PDF Report"
+                    >
+                      <PrinterIcon className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={(e) => handleDownload(e, exp)}
+                      className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors z-10"
+                      title="Excel CSV"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+
+                    {/* Tasto Eliminazione */}
                     {(profile?.role === 'ADMIN' || exp.created_by === session.user.id) && (
-                      <button onClick={(e) => handleDeleteExperiment(e, exp.id)} className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors z-10" title="Elimina"><Trash2 className="w-4 h-4" /></button>
+                      <button 
+                        onClick={(e) => handleDeleteExperiment(e, exp.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors z-10"
+                        title="Elimina"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                     <ChevronRight className="text-slate-300 w-5 h-5 ml-1" />
                   </div>
@@ -584,6 +611,7 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
         <Plus className="w-6 h-6" />
       </button>
 
+      {/* MODAL NUOVO ESPERIMENTO */}
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
