@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // ⚠️ PASSO 1: DECOMMENTA QUESTA RIGA PER IL DATABASE REALE
-// import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 import { 
   Printer, 
@@ -33,7 +33,7 @@ import {
 // --- CONFIGURAZIONE SUPABASE ---
 
 // ⚠️ PASSO 2: DECOMMENTA QUESTO BLOCCO E ASSICURATI DI AVERE IL FILE .env
-/*
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -42,10 +42,10 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-*/
+
 
 // --- MOCK CLIENT (⚠️ PASSO 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
-const supabase = {
+/* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -61,7 +61,7 @@ const supabase = {
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
-};
+}; */
 // -----------------------------------------------------------
 
 
