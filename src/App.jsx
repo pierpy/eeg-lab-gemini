@@ -30,13 +30,13 @@ import {
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
- 
- const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
- const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
- if (!supabaseUrl || !supabaseKey) {
-   console.error("ERRORE: Variabili d'ambiente mancanti.");
- }
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error("ERRORE: Variabili d'ambiente mancanti.");
+}
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -76,8 +76,7 @@ const supabase = createClient(supabaseUrl, supabaseKey);
     })
   }
 };
-// ------ */
-
+// --- */
 // --- ICONA PRINTER MANUALE ---
 const PrinterIcon = (props) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -189,11 +188,13 @@ const TeamManager = ({ onClose, session }) => {
   
   const [loading, setLoading] = useState(false);
 
+  // Funzione fetch estratta per poterla richiamare
+  const fetchUsers = async () => {
+    const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    setUsers(data || []);
+  };
+
   useEffect(() => {
-    const fetchUsers = async () => {
-      const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-      setUsers(data || []);
-    };
     fetchUsers();
   }, [activeTab]);
 
@@ -233,7 +234,6 @@ const TeamManager = ({ onClose, session }) => {
          // @ts-ignore
          const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
          
-         // @ts-ignore
          const tempClient = createClient(supabaseUrl, supabaseKey, {
             auth: {
               persistSession: false, 
@@ -259,7 +259,12 @@ const TeamManager = ({ onClose, session }) => {
       alert(`✅ Utente creato con successo!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}\n\nConsegna queste credenziali all'utente.`);
       setManualEmail('');
       setManualPassword('');
-      setActiveTab('LIST');
+      
+      // Delay per dare tempo al Trigger di Supabase di creare il profilo
+      setTimeout(() => {
+        setActiveTab('LIST'); // Torna alla lista
+        fetchUsers();         // Forza aggiornamento lista
+      }, 1500);
 
     } catch (err) {
       alert("Errore creazione: " + err.message);
