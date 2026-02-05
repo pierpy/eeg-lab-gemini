@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA LA RIGA QUI SOTTO E INSTALLA LA LIBRERIA
-import { createClient } from '@supabase/supabase-js';
+// import { createClient } from '@supabase/supabase-js';
 
 import { 
   Printer, 
@@ -22,13 +22,15 @@ import {
   User,
   Pencil,
   Download,
-  UserCog, // Icona gestione team
-  UserPlus // Icona aggiungi utente
+  UserCog, 
+  UserPlus,
+  Mail,
+  Lock
 } from 'lucide-react';
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
-
+/*
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -37,11 +39,10 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-
+*/
 
 // --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
-// Modificato per simulare un ADMIN e farti vedere l'icona
-/* const supabase = {
+const supabase = {
   auth: {
     getSession: async () => ({ data: { session: { user: { id: 'mock-admin', email: 'admin@lab.com' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -54,7 +55,6 @@ const supabase = createClient(supabaseUrl, supabaseKey);
       order: () => Promise.resolve({ data: [], error: null }), 
       eq: () => ({ 
         single: () => {
-          // SIMULAZIONE PROFILO ADMIN
           if (table === 'profiles') return Promise.resolve({ data: { id: 'mock-admin', role: 'ADMIN', email: 'admin@lab.com' } });
           return Promise.resolve({ data: null });
         } 
@@ -64,50 +64,31 @@ const supabase = createClient(supabaseUrl, supabaseKey);
     update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }),
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
-  }) */
-/* }; */
+  })
+};
 // -----------------------------------------------------------
 
 // --- ICONA PRINTER MANUALE ---
 const PrinterIcon = (props) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    {...props}
-  >
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <path d="M6 9V2h12v7" />
     <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
     <path d="M6 14h12v8H6z" />
   </svg>
 );
 
-// --- HELPER: ESPORTAZIONE CSV (EXCEL) ---
+// --- HELPER: ESPORTAZIONE CSV ---
 const exportExperimentToCsv = async (experiment) => {
   if (!window.confirm(`Vuoi scaricare i dati di "${experiment.name}" in formato Excel/CSV?`)) return;
-
-  const { data: sessions, error } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('experiment_id', experiment.id);
-
+  const { data: sessions, error } = await supabase.from('sessions').select('*').eq('experiment_id', experiment.id);
   if (error) { alert("Errore download: " + error.message); return; }
   if (!sessions || sessions.length === 0) { alert("Nessun dato da esportare."); return; }
-
   const headers = ["ID Esperimento", "Nome Esperimento", "Sperimentatore", "Data Inizio", "Note Exp", "ID Sessione", "Soggetto", "Data Sessione", "File EEG", "Canali Bad", "Note Sessione"];
   const escapeCsv = (text) => `"${(text || '').toString().replace(/"/g, '""')}"`;
-
   const rows = sessions.map(s => [
     experiment.id, escapeCsv(experiment.name), escapeCsv(experiment.experimenter), new Date(experiment.date).toLocaleDateString(), escapeCsv(experiment.notes),
     s.id, escapeCsv(s.subject_id), new Date(s.date).toLocaleString(), escapeCsv(s.eeg_filename), escapeCsv(s.bad_channels), escapeCsv(s.notes)
   ]);
-
   const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -119,162 +100,164 @@ const exportExperimentToCsv = async (experiment) => {
   document.body.removeChild(link);
 };
 
-// --- HELPER: ESPORTAZIONE PDF (STAMPA) ---
+// --- HELPER: ESPORTAZIONE PDF ---
 const ExperimentReport = ({ experiment, onClose }) => {
   const [sessions, setSessions] = useState(null);
-
   useEffect(() => {
     const fetchSessions = async () => {
-      const { data } = await supabase
-        .from('sessions')
-        .select('*')
-        .eq('experiment_id', experiment.id)
-        .order('created_at', { ascending: true });
+      const { data } = await supabase.from('sessions').select('*').eq('experiment_id', experiment.id).order('created_at', { ascending: true });
       setSessions(data || []);
-      // Avvia stampa automatica dopo breve attesa per rendering
       setTimeout(() => window.print(), 800);
     };
     fetchSessions();
   }, [experiment]);
 
-  if (!sessions) return (
-    <div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center">
-      <Loader2 className="w-10 h-10 animate-spin text-emerald-600 mb-4"/>
-      <p className="text-slate-500 font-medium">Preparazione documento...</p>
-    </div>
-  );
+  if (!sessions) return (<div className="fixed inset-0 bg-white z-[100] flex flex-col items-center justify-center"><Loader2 className="w-10 h-10 animate-spin text-emerald-600 mb-4"/><p className="text-slate-500 font-medium">Preparazione documento...</p></div>);
 
   return (
     <div className="fixed inset-0 bg-white z-[100] overflow-auto text-black">
-      {/* BARRA COMANDI (NON VIENE STAMPATA) */}
       <div className="fixed top-0 left-0 right-0 bg-slate-800 text-white p-4 flex justify-between items-center print:hidden shadow-lg">
         <h2 className="font-bold text-lg">Anteprima di Stampa</h2>
         <div className="flex gap-3">
           <button onClick={onClose} className="px-4 py-2 bg-slate-600 hover:bg-slate-500 rounded font-bold">Chiudi</button>
-          <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center gap-2">
-            <PrinterIcon className="w-4 h-4" /> Stampa / Salva PDF
-          </button>
+          <button onClick={() => window.print()} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center gap-2"><PrinterIcon className="w-4 h-4" /> Stampa / Salva PDF</button>
         </div>
       </div>
-
-      {/* CONTENUTO REPORT (FORMATTATO A4) */}
       <div className="max-w-[210mm] mx-auto bg-white mt-20 mb-20 p-8 print:m-0 print:p-0 print:w-full">
-        
-        {/* Header Report */}
         <header className="border-b-2 border-emerald-600 pb-6 mb-8 flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-bold text-emerald-800 mb-1">EEG Lab Report</h1>
-            <p className="text-slate-500 text-sm">Generato il {new Date().toLocaleDateString()} alle {new Date().toLocaleTimeString()}</p>
-          </div>
-          <div className="text-right">
-            <div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded text-xs font-bold uppercase tracking-wide">
-              {experiment.id.slice(0,8)}
-            </div>
-          </div>
+          <div><h1 className="text-3xl font-bold text-emerald-800 mb-1">EEG Lab Report</h1><p className="text-slate-500 text-sm">Generato il {new Date().toLocaleDateString()} alle {new Date().toLocaleTimeString()}</p></div>
+          <div className="text-right"><div className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded text-xs font-bold uppercase tracking-wide">{experiment.id.slice(0,8)}</div></div>
         </header>
-
-        {/* Dati Esperimento */}
         <section className="mb-10 bg-slate-50 p-6 rounded-xl border border-slate-200 print:bg-transparent print:border-none print:p-0">
           <h2 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Dettagli Esperimento</h2>
           <div className="grid grid-cols-2 gap-y-6 gap-x-12 text-sm">
-            <div>
-              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome Esperimento</span>
-              <span className="font-medium text-lg text-slate-900 block">{experiment.name}</span>
-            </div>
-            <div>
-              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Sperimentatore</span>
-              <span className="font-medium text-lg text-slate-900 block">{experiment.experimenter}</span>
-            </div>
-            <div>
-              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Data Inizio</span>
-              <span className="font-medium text-slate-700 block">{new Date(experiment.date).toLocaleDateString()} {new Date(experiment.date).toLocaleTimeString()}</span>
-            </div>
-            <div>
-              <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Totale Sessioni</span>
-              <span className="font-medium text-slate-700 block">{sessions.length} registrate</span>
-            </div>
-            {experiment.notes && (
-              <div className="col-span-2">
-                <span className="block text-xs font-bold text-slate-400 uppercase mb-1">Note Generali</span>
-                <p className="italic text-slate-600 bg-white p-3 rounded border border-slate-200 print:border-none print:p-0">{experiment.notes}</p>
-              </div>
-            )}
+            <div><span className="block text-xs font-bold text-slate-400 uppercase mb-1">Nome Esperimento</span><span className="font-medium text-lg text-slate-900 block">{experiment.name}</span></div>
+            <div><span className="block text-xs font-bold text-slate-400 uppercase mb-1">Sperimentatore</span><span className="font-medium text-lg text-slate-900 block">{experiment.experimenter}</span></div>
+            <div><span className="block text-xs font-bold text-slate-400 uppercase mb-1">Data Inizio</span><span className="font-medium text-slate-700 block">{new Date(experiment.date).toLocaleDateString()} {new Date(experiment.date).toLocaleTimeString()}</span></div>
+            <div><span className="block text-xs font-bold text-slate-400 uppercase mb-1">Totale Sessioni</span><span className="font-medium text-slate-700 block">{sessions.length} registrate</span></div>
+            {experiment.notes && (<div className="col-span-2"><span className="block text-xs font-bold text-slate-400 uppercase mb-1">Note Generali</span><p className="italic text-slate-600 bg-white p-3 rounded border border-slate-200 print:border-none print:p-0">{experiment.notes}</p></div>)}
           </div>
         </section>
-
-        {/* Tabella Sessioni */}
         <section>
           <h2 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-200 pb-2">Elenco Sessioni</h2>
           <table className="w-full text-sm text-left border-collapse">
             <thead>
               <tr className="bg-slate-100 text-slate-700 border-b-2 border-slate-200 print:bg-transparent">
-                <th className="p-3 font-bold uppercase text-xs w-1/6">Soggetto</th>
-                <th className="p-3 font-bold uppercase text-xs w-1/6">Data</th>
-                <th className="p-3 font-bold uppercase text-xs w-1/4">File EEG</th>
-                <th className="p-3 font-bold uppercase text-xs w-1/6">Canali Bad</th>
-                <th className="p-3 font-bold uppercase text-xs w-1/4">Note</th>
+                <th className="p-3 font-bold uppercase text-xs w-1/6">Soggetto</th><th className="p-3 font-bold uppercase text-xs w-1/6">Data</th><th className="p-3 font-bold uppercase text-xs w-1/4">File EEG</th><th className="p-3 font-bold uppercase text-xs w-1/6">Canali Bad</th><th className="p-3 font-bold uppercase text-xs w-1/4">Note</th>
               </tr>
             </thead>
             <tbody>
               {sessions.map((sess, idx) => (
                 <tr key={sess.id} className={`border-b border-slate-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50 print:bg-transparent'}`}>
-                  <td className="p-3 font-bold text-emerald-700">{sess.subject_id}</td>
-                  <td className="p-3 text-slate-600">{new Date(sess.date).toLocaleDateString()}</td>
-                  <td className="p-3 font-mono text-xs text-slate-600">{sess.eeg_filename || '-'}</td>
-                  <td className="p-3 text-xs text-orange-600 font-medium">{sess.bad_channels || '-'}</td>
-                  <td className="p-3 text-xs italic text-slate-500">{sess.notes || '-'}</td>
+                  <td className="p-3 font-bold text-emerald-700">{sess.subject_id}</td><td className="p-3 text-slate-600">{new Date(sess.date).toLocaleDateString()}</td><td className="p-3 font-mono text-xs text-slate-600">{sess.eeg_filename || '-'}</td><td className="p-3 text-xs text-orange-600 font-medium">{sess.bad_channels || '-'}</td><td className="p-3 text-xs italic text-slate-500">{sess.notes || '-'}</td>
                 </tr>
               ))}
-              {sessions.length === 0 && (
-                <tr>
-                  <td colSpan="5" className="p-8 text-center text-slate-400 italic">Nessuna sessione registrata.</td>
-                </tr>
-              )}
+              {sessions.length === 0 && <tr><td colSpan="5" className="p-8 text-center text-slate-400 italic">Nessuna sessione registrata.</td></tr>}
             </tbody>
           </table>
         </section>
-
-        <footer className="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-          <p>Documento riservato ad uso interno - Laboratorio di Neuroscienze</p>
-        </footer>
+        <footer className="mt-12 pt-6 border-t border-slate-200 text-center text-xs text-slate-400"><p>Documento riservato ad uso interno - Laboratorio di Neuroscienze</p></footer>
       </div>
     </div>
   );
 };
 
-// --- NUOVO COMPONENTE: GESTIONE TEAM (USERS) ---
+// --- NUOVO COMPONENTE: GESTIONE TEAM (AGGIORNATO CON AGGIUNTA MANUALE) ---
 const TeamManager = ({ onClose, session }) => {
   const [users, setUsers] = useState([]);
-  const [showInviteForm, setShowInviteForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('LIST'); // 'LIST', 'INVITE', 'CREATE'
   const [role, setRole] = useState('RESEARCHER');
+  
+  // Stati per Invito
   const [generatedCode, setGeneratedCode] = useState(null);
+  
+  // Stati per Creazione Manuale
+  const [manualEmail, setManualEmail] = useState('');
+  const [manualPassword, setManualPassword] = useState('');
+  
   const [loading, setLoading] = useState(false);
 
-  // Fetch lista utenti
   useEffect(() => {
     const fetchUsers = async () => {
-      // Nota: Le policy RLS permettono la lettura di 'profiles'
       const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       setUsers(data || []);
     };
     fetchUsers();
-  }, []);
+  }, [activeTab]);
 
+  // A. Genera Codice Invito (Vecchio metodo)
   const generateInvite = async () => {
     setLoading(true);
     const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
     const newCode = `${prefix}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const { error } = await supabase.from('invites').insert({
-      code: newCode, role, created_by: session.user.id
-    });
-    if (error) alert(error.message);
-    else setGeneratedCode(newCode);
+    const { error } = await supabase.from('invites').insert({ code: newCode, role, created_by: session.user.id });
+    if (error) alert(error.message); else setGeneratedCode(newCode);
     setLoading(false);
+  };
+
+  // B. Crea Utente Manualmente (Nuovo metodo)
+  const handleManualAdd = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    try {
+      // 1. Genera un codice invito "nascosto" per gestire i permessi nel DB
+      const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
+      const hiddenCode = `MANUAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
+      
+      const { error: inviteError } = await supabase.from('invites').insert({
+        code: hiddenCode, role, created_by: session.user.id
+      });
+
+      if (inviteError) throw new Error("Errore preparazione permessi: " + inviteError.message);
+
+      // 2. Crea l'utente usando un client temporaneo (per non disconnettere l'admin)
+      // ⚠️ ATTENZIONE: Questo richiede che 'createClient' sia decommentato in alto
+      let signUpResult;
+      
+      // Controllo se siamo in ambiente reale o mock
+      if (typeof createClient !== 'undefined') {
+         // Creiamo un client che NON salva la sessione nel browser
+         // così l'Admin non viene buttato fuori
+         // @ts-ignore
+         const tempClient = createClient(supabaseUrl, supabaseKey, {
+            auth: {
+              persistSession: false, 
+              autoRefreshToken: false,
+              detectSessionInUrl: false
+            }
+         });
+
+         signUpResult = await tempClient.auth.signUp({
+           email: manualEmail,
+           password: manualPassword,
+           options: { data: { invite_code: hiddenCode } } // Passiamo il codice nascosto
+         });
+      } else {
+         // Fallback per l'anteprima mock
+         signUpResult = await supabase.auth.signUp({ email: manualEmail });
+         console.log("Mock User Created:", manualEmail, manualPassword, role);
+      }
+
+      const { error: signUpError } = signUpResult;
+
+      if (signUpError) throw signUpError;
+
+      alert(`✅ Utente creato con successo!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}\n\nConsegna queste credenziali all'utente.`);
+      setManualEmail('');
+      setManualPassword('');
+      setActiveTab('LIST');
+
+    } catch (err) {
+      alert("Errore creazione: " + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 animate-in fade-in zoom-in-95">
-      <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl h-[80vh] flex flex-col">
+      <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl h-[85vh] flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-xl font-bold flex items-center gap-2">
             <UserCog className="w-6 h-6 text-emerald-600"/> Gestione Team
@@ -282,61 +265,101 @@ const TeamManager = ({ onClose, session }) => {
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full"><LogOut className="w-5 h-5 rotate-180"/></button>
         </div>
 
-        {/* MODULO INVITO (Se attivato) */}
-        {showInviteForm ? (
-          <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-6 shrink-0">
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="font-bold text-emerald-800 flex items-center gap-2"><Key className="w-4 h-4"/> Nuovo Invito</h4>
-              <button onClick={() => { setShowInviteForm(false); setGeneratedCode(null); }} className="text-emerald-600 text-xs hover:underline">Chiudi</button>
-            </div>
-            
+        {/* TABS SELEZIONE */}
+        <div className="flex gap-2 mb-6 p-1 bg-slate-100 rounded-xl">
+          <button 
+            onClick={() => setActiveTab('LIST')} 
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'LIST' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Lista Membri
+          </button>
+          <button 
+            onClick={() => setActiveTab('CREATE')} 
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'CREATE' ? 'bg-white shadow text-emerald-700' : 'text-slate-500 hover:text-emerald-600'}`}
+          >
+            + Aggiungi Utente
+          </button>
+          <button 
+            onClick={() => setActiveTab('INVITE')} 
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'INVITE' ? 'bg-white shadow text-blue-700' : 'text-slate-500 hover:text-blue-600'}`}
+          >
+            Genera Codice
+          </button>
+        </div>
+
+        {/* CONTENUTO TAB: AGGIUNGI MANUALE */}
+        {activeTab === 'CREATE' && (
+          <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-100 mb-4 animate-in slide-in-from-right-4">
+            <h4 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5"/> Crea Nuovo Account</h4>
+            <form onSubmit={handleManualAdd} className="space-y-4">
+              <div className="flex gap-2 mb-2">
+                  {['RESEARCHER', 'ADMIN'].map(r => (
+                    <button type="button" key={r} onClick={() => setRole(r)} className={`flex-1 py-2 rounded-lg border-2 font-bold text-xs ${role === r ? 'border-emerald-500 bg-white text-emerald-700' : 'border-emerald-200/50 bg-white/50 text-slate-500'}`}>{r}</button>
+                  ))}
+              </div>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3 text-emerald-400 w-5 h-5"/>
+                <input type="email" placeholder="Email Utente" required value={manualEmail} onChange={e => setManualEmail(e.target.value)} className="w-full pl-10 p-3 rounded-lg border border-emerald-200 outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 text-emerald-400 w-5 h-5"/>
+                <input type="text" placeholder="Password Provvisoria" required minLength={6} value={manualPassword} onChange={e => setManualPassword(e.target.value)} className="w-full pl-10 p-3 rounded-lg border border-emerald-200 outline-none focus:ring-2 focus:ring-emerald-500" />
+              </div>
+              <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-lg shadow-emerald-200 transition-all">
+                {loading ? 'Creazione in corso...' : 'Crea Utente'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* CONTENUTO TAB: GENERA CODICE */}
+        {activeTab === 'INVITE' && (
+          <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 mb-4 animate-in slide-in-from-right-4">
+            <h4 className="font-bold text-blue-800 mb-4 flex items-center gap-2"><Key className="w-5 h-5"/> Genera Codice Invito</h4>
             {!generatedCode ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div className="flex gap-2">
                   {['RESEARCHER', 'ADMIN'].map(r => (
-                    <button key={r} onClick={() => setRole(r)} className={`flex-1 py-2 rounded-lg border-2 font-bold text-xs ${role === r ? 'border-emerald-500 bg-white text-emerald-700' : 'border-slate-200 bg-white text-slate-500'}`}>{r}</button>
+                    <button type="button" key={r} onClick={() => setRole(r)} className={`flex-1 py-2 rounded-lg border-2 font-bold text-xs ${role === r ? 'border-blue-500 bg-white text-blue-700' : 'border-blue-200/50 bg-white/50 text-slate-500'}`}>{r}</button>
                   ))}
                 </div>
-                <button onClick={generateInvite} disabled={loading} className="w-full py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm">
-                  {loading ? 'Generazione...' : 'Crea Codice'}
+                <button onClick={generateInvite} disabled={loading} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold shadow-lg shadow-blue-200 transition-all">
+                  {loading ? '...' : 'Genera Codice'}
                 </button>
               </div>
             ) : (
-              <div className="text-center bg-white p-4 rounded-lg border border-emerald-200">
+              <div className="text-center bg-white p-4 rounded-lg border border-blue-200">
                 <p className="text-xs text-slate-500 mb-1 font-bold uppercase">Codice Generato</p>
-                <p className="text-2xl font-mono font-bold text-slate-800 select-all mb-2">{generatedCode}</p>
-                <p className="text-xs text-slate-400">Invia questo codice al nuovo utente.</p>
+                <p className="text-3xl font-mono font-bold text-slate-800 select-all mb-2">{generatedCode}</p>
+                <button onClick={() => setGeneratedCode(null)} className="text-blue-600 text-sm hover:underline">Genera un altro</button>
               </div>
             )}
           </div>
-        ) : (
-          <button onClick={() => setShowInviteForm(true)} className="w-full py-3 mb-6 bg-slate-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 shrink-0 hover:bg-slate-700 transition-colors">
-            <UserPlus className="w-5 h-5" /> Aggiungi Membro
-          </button>
         )}
 
-        {/* LISTA UTENTI */}
-        <div className="flex-1 overflow-y-auto pr-2">
-          <h4 className="text-xs font-bold text-slate-400 uppercase mb-3">Membri Attivi ({users.length})</h4>
-          <div className="space-y-2">
-            {users.map(u => (
-              <div key={u.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
-                    <User className="w-4 h-4" />
+        {/* LISTA UTENTI (SEMPRE VISIBILE O SOLO IN TAB LIST) */}
+        {activeTab === 'LIST' && (
+          <div className="flex-1 overflow-y-auto pr-2 animate-in fade-in">
+            <div className="space-y-2">
+              {users.map(u => (
+                <div key={u.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-full ${u.role === 'ADMIN' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm text-slate-800">{u.email}</p>
+                      <p className="text-xs text-slate-500">{new Date(u.created_at).toLocaleDateString()}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-sm text-slate-800">{u.email}</p>
-                    <p className="text-xs text-slate-500">{new Date(u.created_at).toLocaleDateString()}</p>
-                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded border ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                    {u.role}
+                  </span>
                 </div>
-                <span className={`text-[10px] font-bold px-2 py-1 rounded border ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                  {u.role}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -427,7 +450,7 @@ const AuthScreen = () => {
 const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
   const [experiments, setExperiments] = useState([]);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [showTeamManager, setShowTeamManager] = useState(false); // Stato per il gestore team
+  const [showTeamManager, setShowTeamManager] = useState(false);
 
   const fetchExperiments = async () => {
     const { data, error } = await supabase
@@ -525,11 +548,9 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                 onClick={() => onSelectExperiment(exp)}
                 className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 active:scale-[0.99] transition-transform cursor-pointer"
               >
-                {/* FIX LAYOUT MOBILE: Aggiunto gap-2 e classi responsive */}
-                <div className="flex justify-between items-center gap-2">
-                  {/* FIX TEXT: Aggiunto min-w-0 e flex-1 per forzare il troncamento */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-slate-800 truncate">{exp.name}</h3>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold text-slate-800">{exp.name}</h3>
                     {profile?.role === 'ADMIN' && exp.profiles?.email && (
                       <div className="flex items-center gap-1 mt-1 mb-2">
                         <span className="text-[10px] uppercase font-bold text-slate-400">Creato da:</span>
@@ -544,33 +565,11 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
                     </div>
                   </div>
                   
-                  {/* FIX BUTTONS: Aggiunto shrink-0 per evitare che le icone si schiaccino */}
                   <div className="flex items-center gap-1 shrink-0">
-                    {/* Tasti Export */}
-                    <button 
-                      onClick={(e) => handlePrint(e, exp)}
-                      className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10"
-                      title="PDF Report"
-                    >
-                      <PrinterIcon className="w-4 h-4" />
-                    </button>
-                    <button 
-                      onClick={(e) => handleDownload(e, exp)}
-                      className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors z-10"
-                      title="Excel CSV"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-
-                    {/* Tasto Eliminazione */}
+                    <button onClick={(e) => handlePrint(e, exp)} className="p-2 text-slate-400 hover:text-emerald-600 rounded-full hover:bg-emerald-50 transition-colors z-10" title="PDF Report"><PrinterIcon className="w-4 h-4" /></button>
+                    <button onClick={(e) => handleDownload(e, exp)} className="p-2 text-slate-400 hover:text-blue-600 rounded-full hover:bg-blue-50 transition-colors z-10" title="Excel CSV"><Download className="w-4 h-4" /></button>
                     {(profile?.role === 'ADMIN' || exp.created_by === session.user.id) && (
-                      <button 
-                        onClick={(e) => handleDeleteExperiment(e, exp.id)}
-                        className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors z-10"
-                        title="Elimina"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <button onClick={(e) => handleDeleteExperiment(e, exp.id)} className="p-2 text-slate-400 hover:text-red-500 rounded-full hover:bg-red-50 transition-colors z-10" title="Elimina"><Trash2 className="w-4 h-4" /></button>
                     )}
                     <ChevronRight className="text-slate-300 w-5 h-5 ml-1" />
                   </div>
@@ -585,7 +584,6 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
         <Plus className="w-6 h-6" />
       </button>
 
-      {/* MODAL NUOVO ESPERIMENTO */}
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
@@ -604,7 +602,6 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
         </div>
       )}
 
-      {/* MODAL GESTIONE TEAM */}
       {showTeamManager && <TeamManager onClose={() => setShowTeamManager(false)} session={session} />}
     </div>
   );
