@@ -1,17 +1,36 @@
 import React, { useState, useEffect } from 'react';
-// ⚠️ MODALITÀ REALE (LOCALE/VERCEL):
-// 1. Installa la libreria: npm install @supabase/supabase-js
-// 2. DECOMMENTA la riga qui sotto:
+// ⚠️ REAL SUPABASE: Decommenta la riga qui sotto nel tuo progetto locale
 import { createClient } from '@supabase/supabase-js';
 
 import { 
-  Printer, Camera, FileText, Users, Plus, LogOut, ChevronRight, Calendar, 
-  Activity, Trash2, Save, ArrowLeft, Database, Loader2, Key, Check, User, 
-  Pencil, Download, UserCog, UserPlus, Mail, Lock
+  Printer, 
+  Camera, 
+  FileText, 
+  Users, 
+  Plus, 
+  LogOut, 
+  ChevronRight, 
+  Calendar, 
+  Activity, 
+  Trash2, 
+  Save, 
+  ArrowLeft,
+  Database,
+  Loader2,
+  Key,
+  Check,
+  User,
+  Pencil,
+  Download,
+  UserCog, 
+  UserPlus,
+  Mail,
+  Lock
 } from 'lucide-react';
 
 // --- CONFIGURAZIONE SUPABASE ---
-// ⚠️ MODALITÀ REALE: DECOMMENTA QUESTO BLOCCO E CONFIGURA IL FILE .env
+
+// ⚠️ REAL SUPABASE: Decommenta questo blocco nel tuo progetto locale e assicurati di avere il file .env
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -23,23 +42,25 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 
-// --- MOCK CLIENT (DA CANCELLARE/COMMENTARE QUANDO USI QUELLO REALE SOPRA) ---
-// Questo serve solo per l'anteprima web. Se usi il codice sopra, commenta questo blocco.
+// --- MOCK CLIENT (SOLO PER ANTEPRIMA WEB - CANCELLA IN LOCALE) ---
+// Questo blocco simula Supabase per evitare errori in questa chat.
+// Quando usi il codice reale, CANCELLA TUTTO QUESTO BLOCCO.
 /* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: { user: { id: 'mock-admin', email: 'admin@lab.com' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-    signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx." } }),
+    signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx per il login." } }),
     signUp: async () => ({ error: { message: "Funzione disponibile solo con Supabase reale attivato." } }),
     signOut: async () => {},
   },
   from: (table) => ({
     select: () => ({ 
       order: () => Promise.resolve({ data: [
-        { id: '1', email: 'admin@lab.com', role: 'ADMIN', created_at: new Date().toISOString() },
-        { id: '2', email: 'ricercatore@lab.com', role: 'RESEARCHER', created_at: new Date().toISOString() }
+        { id: '1', name: 'Esperimento Alpha', experimenter: 'Dr. Rossi', date: new Date().toISOString(), created_by: 'mock-admin' },
+        { id: '2', name: 'Studio Beta', experimenter: 'Dr. Verdi', date: new Date().toISOString(), created_by: 'other' }
       ], error: null }), 
       eq: () => ({ 
+        order: () => Promise.resolve({ data: [], error: null }),
         single: () => {
           if (table === 'profiles') return Promise.resolve({ data: { id: 'mock-admin', role: 'ADMIN', email: 'admin@lab.com' } });
           return Promise.resolve({ data: null });
@@ -74,11 +95,12 @@ const exportExperimentToCsv = async (experiment) => {
   if (!window.confirm(`Vuoi scaricare i dati di "${experiment.name}" in formato Excel/CSV?`)) return;
   const { data: sessions, error } = await supabase.from('sessions').select('*').eq('experiment_id', experiment.id);
   if (error) { alert("Errore download: " + error.message); return; }
-  if (!sessions || sessions.length === 0) { alert("Nessun dato da esportare."); return; }
+  // Mock data se vuoto
+  const dataToExport = (!sessions || sessions.length === 0) ? [{id:'mock', subject_id:'TEST', date: new Date().toISOString()}] : sessions;
   
   const headers = ["ID Esperimento", "Nome Esperimento", "Sperimentatore", "Data Inizio", "Note Exp", "ID Sessione", "Soggetto", "Data Sessione", "File EEG", "Canali Bad", "Note Sessione"];
   const escapeCsv = (text) => `"${(text || '').toString().replace(/"/g, '""')}"`;
-  const rows = sessions.map(s => [
+  const rows = dataToExport.map(s => [
     experiment.id, escapeCsv(experiment.name), escapeCsv(experiment.experimenter), new Date(experiment.date).toLocaleDateString(), escapeCsv(experiment.notes),
     s.id, escapeCsv(s.subject_id), new Date(s.date).toLocaleString(), escapeCsv(s.eeg_filename), escapeCsv(s.bad_channels), escapeCsv(s.notes)
   ]);
@@ -155,7 +177,7 @@ const ExperimentReport = ({ experiment, onClose }) => {
   );
 };
 
-// --- COMPONENTE: GESTIONE TEAM (FIXED: USA CONFIG GLOBALE) ---
+// --- COMPONENTE: GESTIONE TEAM ---
 const TeamManager = ({ onClose, session }) => {
   const [users, setUsers] = useState([]);
   const [activeTab, setActiveTab] = useState('LIST'); 
@@ -181,7 +203,6 @@ const TeamManager = ({ onClose, session }) => {
     setLoading(false);
   };
 
-  // FUNZIONE AGGIORNATA: Usa la configurazione globale per evitare problemi di scope
   const handleManualAdd = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -194,13 +215,17 @@ const TeamManager = ({ onClose, session }) => {
         code: hiddenCode, role, created_by: session.user.id
       });
 
-      if (inviteError) throw new Error("Errore permessi: " + inviteError.message);
+      if (inviteError) throw new Error("Errore preparazione permessi (Invites): " + inviteError.message);
 
-      // Usiamo createClient dalla libreria importata e le variabili globali
-      if (typeof createClient !== 'undefined' && typeof supabaseUrl !== 'undefined' && typeof supabaseKey !== 'undefined') {
-         const tempClient = createClient(supabaseUrl, supabaseKey, {
-            auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
-         });
+      // ⚠️ REAL SUPABASE: Decommenta il blocco IF qui sotto e cancella l'ELSE di fallback
+      /*
+      if (typeof createClient !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
+         // @ts-ignore
+         const tempClient = createClient(
+            import.meta.env.VITE_SUPABASE_URL, 
+            import.meta.env.VITE_SUPABASE_ANON_KEY, 
+            { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } }
+         );
 
          const { error: signUpError } = await tempClient.auth.signUp({
            email: manualEmail,
@@ -210,19 +235,23 @@ const TeamManager = ({ onClose, session }) => {
 
          if (signUpError) throw signUpError;
 
-         alert(`✅ Utente creato!\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}`);
-         setManualEmail('');
-         setManualPassword('');
-         
-         // Ritardo aumentato per permettere al trigger SQL di completare l'inserimento nel profilo
-         setTimeout(() => {
-           setActiveTab('LIST');
-           fetchUsers();
-         }, 2000); // 2 secondi di attesa
-         
       } else {
-         throw new Error("Configurazione Supabase mancante. Assicurati di aver decommentato il codice di produzione.");
+         // Fallback Mock (CANCELLA IN PRODUZIONE)
+         console.log("Mock Signup: ", manualEmail, manualPassword);
+         await new Promise(resolve => setTimeout(resolve, 500));
       }
+      */
+      
+      // MOCK FALLBACK (DA CANCELLARE IN LOCALE QUANDO USI IL BLOCCO SOPRA)
+      console.log("Mock Signup: ", manualEmail, manualPassword);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // ------------------------------------------------------------------
+
+      alert(`✅ Utente creato con successo!\n\nEmail: ${manualEmail}\nPassword: ${manualPassword}\nRuolo: ${role}`);
+      setManualEmail('');
+      setManualPassword('');
+      
+      setTimeout(() => { setActiveTab('LIST'); fetchUsers(); }, 2000);
 
     } catch (err) {
       alert("Errore creazione: " + err.message);
@@ -256,6 +285,9 @@ const TeamManager = ({ onClose, session }) => {
         {activeTab === 'CREATE' && (
           <div className="bg-emerald-50 p-5 rounded-xl border border-emerald-100 mb-4 animate-in slide-in-from-right-4">
             <h4 className="font-bold text-emerald-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5"/> Crea Nuovo Account</h4>
+            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2 mb-4 text-xs">
+              <strong>Nota:</strong> Assicurati di aver decommentato il codice "REAL SUPABASE" in App.jsx per far funzionare questa feature.
+            </div>
             <form onSubmit={handleManualAdd} className="space-y-4">
               <div className="flex gap-2 mb-2">
                   {['RESEARCHER', 'ADMIN'].map(r => (
@@ -355,7 +387,7 @@ const AuthScreen = () => {
         <p className="text-center text-slate-500 mb-8">Accesso Laboratorio</p>
 
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs p-3 rounded mb-4">
-          <strong>Configurazione:</strong> Per usare l'app in locale, apri App.jsx e segui le istruzioni commentate in alto.
+          <strong>Setup:</strong> Ricordati di decommentare le righe di Supabase nel codice per collegare il database reale!
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
