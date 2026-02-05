@@ -22,8 +22,8 @@ import {
   User,
   Pencil,
   Download,
-  UserCog, // Nuova icona per gestione team
-  UserPlus // Nuova icona per aggiungere utenti
+  UserCog, // Icona gestione team
+  UserPlus // Icona aggiungi utente
 } from 'lucide-react';
 
 // --- CONFIGURAZIONE SUPABASE ---
@@ -40,22 +40,32 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 
 // --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE PRIMA DI VERCEL) ---
+// Modificato per simulare un ADMIN e farti vedere l'icona
 /* const supabase = {
   auth: {
-    getSession: async () => ({ data: { session: null } }),
+    getSession: async () => ({ data: { session: { user: { id: 'mock-admin', email: 'admin@lab.com' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     signInWithPassword: async () => ({ error: { message: "Anteprima: Decommenta il codice Supabase reale in App.jsx per il login." } }),
     signUp: async () => ({ error: { message: "Funzione disponibile solo con Supabase reale attivato." } }),
     signOut: async () => {},
   },
-  from: () => ({
-    select: () => ({ order: () => Promise.resolve({ data: [], error: null }), eq: () => ({ single: () => Promise.resolve({ data: null }) }) }),
+  from: (table) => ({
+    select: () => ({ 
+      order: () => Promise.resolve({ data: [], error: null }), 
+      eq: () => ({ 
+        single: () => {
+          // SIMULAZIONE PROFILO ADMIN
+          if (table === 'profiles') return Promise.resolve({ data: { id: 'mock-admin', role: 'ADMIN', email: 'admin@lab.com' } });
+          return Promise.resolve({ data: null });
+        } 
+      }) 
+    }),
     insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
     update: () => ({ eq: () => Promise.resolve({ error: { message: "DB non connesso." } }) }),
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
-  })
-}; */
+  }) */
+/* }; */
 // -----------------------------------------------------------
 
 // --- ICONA PRINTER MANUALE ---
