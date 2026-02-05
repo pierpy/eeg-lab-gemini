@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA LA RIGA QUI SOTTO E INSTALLA LA LIBRERIA
-// import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 import { 
   Printer, 
@@ -30,7 +30,7 @@ import {
 
 // --- CONFIGURAZIONE SUPABASE ---
 // ⚠️ PER VERCEL/LOCALE: DECOMMENTA IL BLOCCO QUI SOTTO
-/*
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -39,11 +39,11 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
-*/
+
 
 // --- MOCK CLIENT (DA RIMUOVERE/COMMENTARE IN LOCALE/VERCEL) ---
 // Questo serve solo per non far crashare l'anteprima in questa chat.
-const supabase = {
+/* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: { user: { id: 'mock-admin', email: 'admin@lab.com' } } } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
@@ -67,7 +67,7 @@ const supabase = {
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
   })
 };
-// -----------------------------------------------------------
+// ----------- */------------------------------------------------
 
 // --- ICONA PRINTER MANUALE ---
 const PrinterIcon = (props) => (
