@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// ⚠️ PASSO 1: DECOMMENTA QUESTA RIGA PER IL DATABASE REALE
+// ⚠️ STEP 1: DECOMMENTA QUESTA RIGA PER ATTIVARE IL DATABASE REALE
 import { createClient } from '@supabase/supabase-js';
 
 import { 
@@ -32,35 +32,53 @@ import {
 
 // --- CONFIGURAZIONE SUPABASE ---
 
-// ⚠️ PASSO 2: DECOMMENTA QUESTO BLOCCO E ASSICURATI DI AVERE IL FILE .env
+// ⚠️ STEP 2: DECOMMENTA QUESTO BLOCCO E INSERISCI LE TUE CHIAVI NEL FILE .env
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("ERRORE CRITICO: Variabili d'ambiente mancanti.");
+  console.error("ERRORE CRITICO: Variabili d'ambiente VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY mancanti.");
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 
-// --- MOCK CLIENT (⚠️ PASSO 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
+
+// --- MOCK CLIENT (⚠️ STEP 3: CANCELLA QUESTO BLOCCO QUANDO USI IL CODICE REALE) ---
 /* const supabase = {
   auth: {
     getSession: async () => ({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     signInWithPassword: async () => ({ error: { message: "⚠️ SEI IN MOCK MODE. Decommenta le righe in alto nel file App.jsx per collegarti al vero database." } }),
     signUp: async () => ({ error: { message: "Funzione disponibile solo con database reale." } }),
-    updateUser: async () => ({ error: null }), // Mock update user
+    updateUser: async () => ({ error: null }),
     signOut: async () => {},
   },
-  from: () => ({
-    select: () => ({ order: () => Promise.resolve({ data: [], error: null }), eq: () => ({ single: () => Promise.resolve({ data: null }) }) }),
-    insert: () => Promise.resolve({ error: { message: "DB non connesso." } }),
+  from: (table) => ({
+    select: () => ({ 
+      order: () => Promise.resolve({ data: [
+        { id: '1', email: 'admin@lab.com', role: 'ADMIN', created_at: new Date().toISOString() },
+        { id: '2', email: 'ricercatore@lab.com', role: 'RESEARCHER', created_at: new Date().toISOString() }
+      ], error: null }), 
+      eq: () => ({ 
+        single: () => {
+          if (table === 'profiles') return Promise.resolve({ data: { id: 'mock-admin', role: 'ADMIN', email: 'admin@lab.com' } });
+          return Promise.resolve({ data: null });
+        } 
+      }) 
+    }),
+    insert: () => Promise.resolve({ error: null }),
     update: () => ({ eq: () => Promise.resolve({ error: null }) }),
     delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
     eq: () => ({ single: () => Promise.resolve({ data: null }) })
-  })
+  }),
+  storage: {
+    from: () => ({
+      upload: async () => ({ data: {}, error: null }),
+      getPublicUrl: () => ({ data: { publicUrl: "https://via.placeholder.com/150" } })
+    })
+  }
 }; */
 // -----------------------------------------------------------
 
@@ -238,7 +256,6 @@ const TeamManager = ({ onClose, session }) => {
     setLoading(true);
 
     try {
-      // 1. Validazione di base
       if (!manualEmail.includes('@') || manualPassword.length < 6) {
         throw new Error("Email non valida o password troppo corta (min 6 caratteri).");
       }
@@ -246,16 +263,12 @@ const TeamManager = ({ onClose, session }) => {
       const prefix = role === 'ADMIN' ? 'ADM' : 'RES';
       const hiddenCode = `MANUAL-${Math.random().toString(36).substring(2, 10).toUpperCase()}`;
       
-      // 2. Crea invito nascosto nel DB
-      // Questo è cruciale perché il trigger 'handle_new_user' su Supabase controlla che esista un invito
       const { error: inviteError } = await supabase.from('invites').insert({
         code: hiddenCode, role, created_by: session.user.id
       });
 
       if (inviteError) throw new Error("Impossibile creare permesso: " + inviteError.message);
 
-      // 3. Creazione utente con client temporaneo
-      // Usiamo un client usa e getta per non disconnettere l'admin corrente
       if (typeof createClient !== 'undefined' && import.meta.env && import.meta.env.VITE_SUPABASE_URL) {
          // @ts-ignore
          const tempClient = createClient(
@@ -270,7 +283,7 @@ const TeamManager = ({ onClose, session }) => {
            email: manualEmail,
            password: manualPassword,
            options: { 
-             data: { invite_code: hiddenCode } // Passa il codice per il trigger
+             data: { invite_code: hiddenCode } 
            }
          });
 
@@ -283,7 +296,6 @@ const TeamManager = ({ onClose, session }) => {
       setManualEmail('');
       setManualPassword('');
       
-      // Aggiorna lista dopo breve attesa
       setTimeout(() => {
         setActiveTab('LIST');
         fetchUsers();
@@ -303,6 +315,26 @@ const TeamManager = ({ onClose, session }) => {
     const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', userId);
     if (error) alert(error.message);
     else setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
+  };
+
+  // Funzione per eliminare utente
+  const handleDeleteUser = async (userId) => {
+    if (userId === session.user.id) {
+      alert("Non puoi eliminare il tuo stesso account.");
+      return;
+    }
+    if (!window.confirm("⚠️ SEI SICURO?\n\nEliminando l'utente:\n1. Non potrà più accedere all'app.\n2. I suoi dati rimarranno nel database (come storico).\n3. Per riammetterlo dovrai creare un nuovo account.")) return;
+
+    // Cancelliamo dalla tabella profiles. Questo revoca l'accesso all'app grazie alle RLS.
+    // (Nota: L'account su Auth rimarrà fino a cancellazione manuale da dashboard Supabase, ma sarà inerme)
+    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+    
+    if (error) {
+      alert("Errore eliminazione: " + error.message);
+    } else {
+      // Rimuoviamo l'utente dalla lista locale
+      setUsers(users.filter(u => u.id !== userId));
+    }
   };
 
   return (
@@ -358,9 +390,14 @@ const TeamManager = ({ onClose, session }) => {
                     <div><p className="font-medium text-sm text-slate-800">{u.email}</p><p className="text-xs text-slate-500">{new Date(u.created_at).toLocaleDateString()}</p></div>
                   </div>
                   {u.id === session.user.id ? <span className="text-[10px] font-bold px-2 py-1 rounded border bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed">{u.role}</span> : (
-                    <select value={u.role} onChange={(e) => handleUpdateRole(u.id, e.target.value)} className={`text-[10px] font-bold px-2 py-1 rounded border outline-none cursor-pointer appearance-none text-center ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                      <option value="RESEARCHER">RESEARCHER</option><option value="ADMIN">ADMIN</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select value={u.role} onChange={(e) => handleUpdateRole(u.id, e.target.value)} className={`text-[10px] font-bold px-2 py-1 rounded border outline-none cursor-pointer appearance-none text-center ${u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                        <option value="RESEARCHER">RESEARCHER</option><option value="ADMIN">ADMIN</option>
+                      </select>
+                      <button onClick={() => handleDeleteUser(u.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors" title="Elimina Utente">
+                         <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
