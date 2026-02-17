@@ -468,6 +468,9 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
   const [showTeamManager, setShowTeamManager] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
+// 1. Nuovo stato per la vista
+  const [viewMode, setViewMode] = useState('EXPERIMENTS'); // 'EXPERIMENTS' o 'SUBJECTS'
+
   const fetchExperiments = async () => {
     const { data, error } = await supabase.from('experiments').select('*, profiles:created_by ( email )').order('created_at', { ascending: false });
     if (error) console.error("Errore fetch:", error); else setExperiments(data || []);
@@ -509,6 +512,22 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
       </header>
 
       <main className="max-w-3xl mx-auto p-4">
+
+<div className="flex bg-slate-200 p-1 rounded-lg mb-6 max-w-sm mx-auto">
+            <button 
+                onClick={() => setViewMode('EXPERIMENTS')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-all flex justify-center items-center gap-2 ${viewMode === 'EXPERIMENTS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+                <Activity className="w-4 h-4"/> Esperimenti
+            </button>
+            <button 
+                onClick={() => setViewMode('SUBJECTS')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-all flex justify-center items-center gap-2 ${viewMode === 'SUBJECTS' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+                <Users className="w-4 h-4"/> Soggetti
+            </button>
+        </div>
+      <SubjectsView supabase={supabase} />
         <h2 className="text-xl font-bold text-slate-800 mb-4">{profile?.role === 'ADMIN' ? 'Tutti gli Esperimenti' : 'I Miei Esperimenti'}</h2>
         {experiments.length === 0 ? (<div className="text-center py-12 text-slate-400"><Database className="w-12 h-12 mx-auto mb-3 opacity-20" /><p>Nessun esperimento trovato.</p></div>) : (
           <div className="space-y-3">
@@ -549,6 +568,135 @@ const Dashboard = ({ session, profile, onSelectExperiment, onPrint }) => {
       )}
       {showTeamManager && <TeamManager onClose={() => setShowTeamManager(false)} session={session} />}
       {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+    </div>
+  );
+};
+
+// --- NUOVI COMPONENTI PER VISTA SOGGETTI ---
+
+const SubjectDetail = ({ subjectId, sessions, onBack }) => {
+  return (
+    <div className="animate-in slide-in-from-right-4">
+      <div className="flex items-center gap-4 mb-6">
+        <button onClick={onBack} className="p-2 -ml-2 hover:bg-slate-100 rounded-full text-slate-600">
+          <ArrowLeft className="w-6 h-6" />
+        </button>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <User className="w-6 h-6 text-emerald-600" /> {subjectId}
+          </h2>
+          <p className="text-sm text-slate-500">{sessions.length} sessioni totali</p>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {sessions.map((sess) => (
+          <div key={sess.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                {/* Mostriamo il nome dell'esperimento collegato */}
+                <h4 className="font-bold text-slate-800 text-sm">
+                  {sess.experiments?.name || 'Esperimento sconosciuto'}
+                </h4>
+                <p className="text-xs text-slate-500">
+                  {new Date(sess.date).toLocaleDateString()} alle {new Date(sess.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                </p>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-1 rounded border ${sess.bad_channels ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                {sess.bad_channels ? 'Bad Channels' : 'OK'}
+              </span>
+            </div>
+            
+            <div className="text-sm space-y-1 text-slate-600 bg-slate-50 p-3 rounded-lg">
+              <p className="flex gap-2"><FileText className="w-4 h-4 text-slate-400"/> <span className="font-mono">{sess.eeg_filename || 'N/A'}</span></p>
+              {sess.bad_channels && <p className="text-xs text-orange-600 font-medium">Bad: {sess.bad_channels}</p>}
+              {sess.notes && <p className="italic text-xs text-slate-500 mt-1">"{sess.notes}"</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const SubjectsView = ({ supabase }) => {
+  const [subjects, setSubjects] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selectedSubject, setSelectedSubject] = useState(null);
+
+  useEffect(() => {
+    const fetchAllSessions = async () => {
+      setLoading(true);
+      // Join con la tabella experiments per avere il nome dell'esperimento
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('*, experiments (name, experimenter)')
+        .order('date', { ascending: false });
+
+      if (error) {
+        alert("Errore caricamento soggetti: " + error.message);
+      } else {
+        // Raggruppa le sessioni per subject_id
+        const grouped = data.reduce((acc, session) => {
+          const subId = session.subject_id;
+          if (!acc[subId]) acc[subId] = [];
+          acc[subId].push(session);
+          return acc;
+        }, {});
+        setSubjects(grouped);
+      }
+      setLoading(false);
+    };
+    fetchAllSessions();
+  }, [supabase]);
+
+  if (loading) return <div className="p-8 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-emerald-600" /></div>;
+
+  if (selectedSubject) {
+    return <SubjectDetail subjectId={selectedSubject} sessions={subjects[selectedSubject]} onBack={() => setSelectedSubject(null)} />;
+  }
+
+  const subjectIds = Object.keys(subjects).sort();
+
+  return (
+    <div className="animate-in fade-in">
+      <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+        Soggetti Registrati <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-xs">{subjectIds.length}</span>
+      </h3>
+      
+      {subjectIds.length === 0 ? (
+        <div className="text-center py-10 text-slate-400 italic">Nessun soggetto trovato.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {subjectIds.map(subId => {
+            const sessList = subjects[subId];
+            const lastSess = sessList[0]; // Poiché abbiamo ordinato per data decrescente
+            const uniqueExperiments = [...new Set(sessList.map(s => s.experiments?.name))].length;
+
+            return (
+              <div key={subId} onClick={() => setSelectedSubject(subId)} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 hover:border-emerald-300 cursor-pointer active:scale-[0.98] transition-all">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="font-bold text-lg text-emerald-700 flex items-center gap-2">
+                      <User className="w-5 h-5" /> {subId}
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-1">Ultima: {new Date(lastSess.date).toLocaleDateString()}</p>
+                  </div>
+                  <ChevronRight className="text-slate-300" />
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold">
+                    {sessList.length} Sessioni
+                  </span>
+                  <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold">
+                    {uniqueExperiments} Esperimenti
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
