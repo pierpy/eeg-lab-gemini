@@ -559,6 +559,10 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
   const [isEditingExp, setIsEditingExp] = useState(false);
   const [sessionToEdit, setSessionToEdit] = useState(null); 
   const [uploading, setUploading] = useState(false);
+  
+  // --- STATI PER IL RAGGRUPPAMENTO ---
+  const [groupBySubject, setGroupBySubject] = useState(false);
+  const [expandedSubjects, setExpandedSubjects] = useState({}); // Gestisce quali cartelle sono aperte
 
   const canEdit = profile?.role === 'ADMIN' || experiment.created_by === session.user.id;
 
@@ -567,6 +571,19 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
     setSessions(data || []);
   };
   useEffect(() => { fetchSessions(); }, [experiment]);
+
+  // LOGICA: Organizza i dati per soggetto
+  const sessionsBySubject = sessions.reduce((acc, sess) => {
+    const subId = sess.subject_id;
+    if (!acc[subId]) acc[subId] = [];
+    acc[subId].push(sess);
+    return acc;
+  }, {});
+
+  // LOGICA: Apre/Chiude la cartella del soggetto
+  const toggleSubject = (subId) => {
+    setExpandedSubjects(prev => ({...prev, [subId]: !prev[subId]}));
+  };
 
   const handleDeleteExperiment = async () => {
     if (!window.confirm("⚠️ SEI SICURO? Eliminando l'esperimento verranno cancellate anche tutte le sue sessioni.")) return;
@@ -605,8 +622,25 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
     if(window.confirm("Eliminare questa sessione?")) { await supabase.from('sessions').delete().eq('id', id); fetchSessions(); }
   }
 
+  // Sotto-componente Card Sessione
+  const SessionCard = ({ sess }) => (
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden mb-3 animate-in fade-in">
+      <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+        <h4 className="font-bold text-emerald-600 flex items-center gap-2"><Users className="w-4 h-4" /> {sess.subject_id} <span className="text-slate-400 font-normal text-xs ml-2">{new Date(sess.date).toLocaleString()}</span></h4>
+        {canEdit && <div className="flex gap-1"><button onClick={() => setSessionToEdit(sess)} className="text-slate-400 hover:text-emerald-600 p-2"><Pencil className="w-4 h-4" /></button><button onClick={() => handleDeleteSession(sess.id)} className="text-slate-400 hover:text-red-500 p-2"><Trash2 className="w-4 h-4" /></button></div>}
+      </div>
+      <div className="p-4 text-sm space-y-2">
+         <p className="flex gap-2 items-center"><FileText className="w-4 h-4 text-slate-400"/> <span className="text-slate-500">File:</span> <span className="font-mono bg-slate-100 px-1 rounded text-slate-700">{sess.eeg_filename}</span></p>
+         {sess.bad_channels && <p className="flex gap-2 items-center"><Activity className="w-4 h-4 text-orange-400"/> <span className="text-slate-500">Bad Ch:</span> {sess.bad_channels}</p>}
+         {sess.setup_photo_url && <div className="mt-3"><p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Camera className="w-3 h-3"/> Setup Foto:</p><img src={sess.setup_photo_url} alt="Setup" className="w-full h-40 object-cover rounded-lg border border-slate-100" /></div>}
+         {sess.notes && <p className="text-xs text-slate-500 italic mt-2 border-l-2 border-slate-200 pl-2">{sess.notes}</p>}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
+      {/* HEADER SUPERIORE */}
       <div className="bg-white p-4 shadow-sm sticky top-0 z-10 flex items-center gap-4">
         <button onClick={onBack} className="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-full"><ArrowLeft className="w-6 h-6" /></button>
         <div className="flex-1 min-w-0"><h2 className="font-bold text-lg truncate">{experiment.name}</h2><p className="text-xs text-slate-500 truncate">ID: {experiment.id.slice(0,8)}...</p></div>
@@ -618,31 +652,77 @@ const ExperimentDetail = ({ experiment: initialExperiment, session, profile, onB
       </div>
 
       <main className="max-w-3xl mx-auto p-4 space-y-6">
+        {/* INFO ESPERIMENTO */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
            <div className="grid grid-cols-2 gap-4"><div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sperimentatore</label><p className="text-sm font-medium text-slate-800">{experiment.experimenter}</p></div><div><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Data Inizio</label><p className="text-sm font-medium text-slate-800">{new Date(experiment.date).toLocaleDateString()}</p></div></div>
            {experiment.notes && <div className="mt-4 pt-4 border-t border-slate-50"><label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Note</label><p className="text-sm text-slate-600 mt-1 italic">{experiment.notes}</p></div>}
         </div>
-        <h3 className="font-bold text-slate-700 flex items-center gap-2">Sessioni <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-xs">{sessions.length}</span></h3>
+        
+        {/* HEADER LISTA SESSIONI + TASTO RAGGRUPPA */}
+        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mt-8 mb-4">
+            <h3 className="font-bold text-slate-700 flex items-center gap-2 text-lg">
+                Sessioni <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-xs">{sessions.length}</span>
+            </h3>
+            
+            {/* TASTO SEMPRE VISIBILE ORA */}
+            <button 
+                onClick={() => setGroupBySubject(!groupBySubject)} 
+                className={`text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm ${
+                  groupBySubject 
+                  ? 'bg-slate-800 text-white hover:bg-slate-700' 
+                  : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-50'
+                }`}
+            >
+               {groupBySubject ? (
+                  <><Activity className="w-4 h-4 text-emerald-400"/> Mostra Tutto</>
+               ) : (
+                  <><Users className="w-4 h-4 text-blue-500"/> Raggruppa per Soggetto</>
+               )}
+            </button>
+        </div>
+
         <div className="space-y-3">
-          {sessions.map(sess => (
-            <div key={sess.id} className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-                <h4 className="font-bold text-emerald-600 flex items-center gap-2"><Users className="w-4 h-4" /> {sess.subject_id}</h4>
-                {canEdit && <div className="flex gap-1"><button onClick={() => setSessionToEdit(sess)} className="text-slate-400 hover:text-emerald-600 p-2"><Pencil className="w-4 h-4" /></button><button onClick={() => handleDeleteSession(sess.id)} className="text-slate-400 hover:text-red-500 p-2"><Trash2 className="w-4 h-4" /></button></div>}
-              </div>
-              <div className="p-4 text-sm space-y-2">
-                 <p className="flex gap-2 items-center"><FileText className="w-4 h-4 text-slate-400"/> <span className="text-slate-500">File:</span> <span className="font-mono bg-slate-100 px-1 rounded text-slate-700">{sess.eeg_filename}</span></p>
-                 {sess.bad_channels && <p className="flex gap-2 items-center"><Activity className="w-4 h-4 text-orange-400"/> <span className="text-slate-500">Bad Ch:</span> {sess.bad_channels}</p>}
-                 {sess.setup_photo_url && <div className="mt-3"><p className="text-xs text-slate-400 mb-1 flex items-center gap-1"><Camera className="w-3 h-3"/> Setup Foto:</p><img src={sess.setup_photo_url} alt="Setup" className="w-full h-40 object-cover rounded-lg border border-slate-100" /></div>}
-                 {sess.notes && <p className="text-xs text-slate-500 italic mt-2 border-l-2 border-slate-200 pl-2">{sess.notes}</p>}
-              </div>
-            </div>
-          ))}
+          {sessions.length === 0 && <p className="text-center text-slate-400 italic py-8 border-2 border-dashed border-slate-200 rounded-xl">Nessuna sessione registrata in questo esperimento.<br/><span className="text-xs">Usa il tasto + in basso a destra per aggiungerne una.</span></p>}
+          
+          {/* VISTA RAGGRUPPATA */}
+          {groupBySubject && sessions.length > 0 ? (
+            Object.keys(sessionsBySubject).sort().map(subId => (
+                <div key={subId} className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm mb-3">
+                    <button 
+                        onClick={() => toggleSubject(subId)}
+                        className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors"
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white border border-slate-200 p-2 rounded-full text-emerald-600 font-bold text-xs"><Users className="w-4 h-4"/></div>
+                            <div className="text-left">
+                                <h4 className="font-bold text-slate-800">{subId}</h4>
+                                <p className="text-xs text-slate-500">{sessionsBySubject[subId].length} sessioni registrate</p>
+                            </div>
+                        </div>
+                        <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform duration-200 ${expandedSubjects[subId] ? 'rotate-90' : ''}`} />
+                    </button>
+                    
+                    {expandedSubjects[subId] && (
+                        <div className="p-3 bg-slate-100/50 border-t border-slate-200 space-y-3 animate-in slide-in-from-top-2">
+                            {sessionsBySubject[subId].map(sess => (
+                                <SessionCard key={sess.id} sess={sess} />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            ))
+          ) : (
+            /* VISTA LISTA NORMALE */
+            sessions.map(sess => (
+              <SessionCard key={sess.id} sess={sess} />
+            ))
+          )}
         </div>
       </main>
 
-      {canEdit && <button onClick={() => setSessionToEdit({})} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 flex gap-2 pr-6"><Plus className="w-6 h-6" /> <span className="font-bold">Sessione</span></button>}
+      {canEdit && <button onClick={() => setSessionToEdit({})} className="fixed bottom-6 right-6 bg-emerald-600 text-white p-4 rounded-full shadow-lg hover:bg-emerald-700 flex gap-2 pr-6 z-20"><Plus className="w-6 h-6" /> <span className="font-bold">Sessione</span></button>}
 
+      {/* MODALI (Edit Exp & Edit Session) */}
       {isEditingExp && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
